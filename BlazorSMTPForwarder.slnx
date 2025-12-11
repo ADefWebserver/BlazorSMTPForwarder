@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="BlazorSMTPForwarder.AppHost/BlazorSMTPForwarder.AppHost.csproj" />
+  <Project Path="BlazorSMTPForwarder.ServiceDefaults/BlazorSMTPForwarder.ServiceDefaults.csproj" />
+  <Project Path="BlazorSMTPForwarder.Web/BlazorSMTPForwarder.Web.csproj" />
+  <Project Path="BlazorSMTPForwarderSrv/BlazorSMTPForwarderSrv.csproj" Id="65e38a34-40dd-4f76-a7de-4245aaa16b5d" />
+</Solution>

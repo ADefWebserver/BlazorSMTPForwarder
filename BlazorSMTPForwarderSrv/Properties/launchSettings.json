@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "BlazorSMTPForwarderSrv": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
