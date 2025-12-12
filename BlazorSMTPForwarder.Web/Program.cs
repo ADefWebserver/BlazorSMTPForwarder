@@ -1,6 +1,7 @@
 using BlazorSMTPForwarder.Web;
 using BlazorSMTPForwarder.Web.Components;
 using BlazorSMTPForwarder.Web.Services;
+using Microsoft.AspNetCore.Components.Authorization;
 using Radzen;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -9,12 +10,15 @@ var builder = WebApplication.CreateBuilder(args);
 builder.AddServiceDefaults();
 
 // Add Azure clients
-builder.AddAzureTableClient("SMTPSettings");
-builder.AddAzureBlobClient("emailblobs");
+builder.AddAzureTableServiceClient("SMTPSettings");
+builder.AddAzureBlobServiceClient("emailblobs");
 
 // Add application services
 builder.Services.AddScoped<BlobEmailService>();
 builder.Services.AddScoped<SmtpTestClient>();
+builder.Services.AddScoped<LoginService>();
+builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
+builder.Services.AddCascadingAuthenticationState();
 
 // Add Radzen services
 builder.Services.AddRadzenComponents();
