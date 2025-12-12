@@ -1,0 +1,258 @@
+@using Radzen
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Net.Mail
+@using System.Net
+@using System.ComponentModel.DataAnnotations
+@using Azure.Data.Tables
+@using Azure
+@using Azure.Data.Tables.Models
+@using System.Text.Json
+
+<div class="rz-p-2">
+    <RadzenNotification />
+
+    @if (!string.IsNullOrWhiteSpace(_settingsError))
+    {
+        <div class="rz-text-danger rz-mb-2">@_settingsError</div>
+    }
+
+    <EditForm Model="@_model" OnValidSubmit="HandleValidSubmitAsync">
+        <DataAnnotationsValidator />
+        <div class="rz-grid rz-g-2">
+            <div>
+                <RadzenLabel Text="From" />
+                <RadzenTextBox @bind-Value="_model.From" Style="width:100%" />
+            </div>
+            <div>
+                <RadzenLabel Text="To" />
+                <RadzenTextBox @bind-Value="_model.To" Style="width:100%" />
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <RadzenLabel Text="Subject" />
+                <RadzenTextBox @bind-Value="_model.Subject" Style="width:100%" />
+            </div>
+            <div style="grid-column: 1 / -1;">
+                <RadzenLabel Text="Body" />
+                <RadzenTextArea @bind-Value="_model.Body" Rows="8" Style="width:100%" />
+            </div>
+            <div class="rz-d-flex rz-justify-content-end rz-g-2" style="grid-column: 1 / -1;">
+                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@Cancel" />
+                <RadzenButton ButtonStyle="ButtonStyle.Primary" Disabled="@_sending" ButtonType="Radzen.ButtonType.Submit" Text="@(_sending ? "Sending..." : "Send")" />
+            </div>
+        </div>
+    </EditForm>
+</div>
+
+@code {
+    [Parameter] public string? DefaultTo { get; set; }
+    [Parameter] public string? DefaultFrom { get; set; }
+    [Parameter] public string? DefaultSubject { get; set; }
+    [Parameter] public string? DefaultBody { get; set; }
+
+    [Inject] public DialogService DialogService { get; set; } = default!;
+    [Inject] public NotificationService NotificationService { get; set; } = default!;
+    [Inject] public TableServiceClient TableServiceClient { get; set; } = default!;
+    [Inject] public NavigationManager Nav { get; set; } = default!;
+    [Inject] public IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
+
+    private class ComposeModel
+    {
+        [EmailAddress]
+        public string From { get; set; } = "sender@example.com";
+        [Required(ErrorMessage = "Recipient (To) is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email address.")]
+        public string To { get; set; } = string.Empty;
+        [Required]
+        public string Subject { get; set; } = "Test from Blazor";
+        [Required]
+        public string Body { get; set; } = "This is a test email from the Blazor app.";
+    }
+
+    private readonly ComposeModel _model = new();
+
+    private bool _sending;
+    private string? _settingsError;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(DefaultTo) && string.IsNullOrWhiteSpace(_model.To))
+        {
+            _model.To = DefaultTo!;
+        }
+        if (!string.IsNullOrWhiteSpace(DefaultFrom))
+        {
+            _model.From = DefaultFrom!;
+        }
+        if (!string.IsNullOrWhiteSpace(DefaultSubject))
+        {
+            _model.Subject = DefaultSubject!;
+        }
+        if (DefaultBody is not null)
+        {
+            _model.Body = DefaultBody;
+        }
+    }
+
+    private Task Cancel()
+    {
+        DialogService.Close(false);
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleValidSubmitAsync(EditContext _)
+    {
+        await SendAsync();
+    }
+
+    private void ShowError(string message)
+    {
+        NotificationService.Notify(new NotificationMessage
+        {
+            Severity = NotificationSeverity.Error,
+            Summary = "Error",
+            Detail = message,
+            Duration = 5000
+        });
+    }
+
+    private string ResolveSmtpHost()
+    {
+        // Prefer server local IP from HttpContext if available
+        var ctx = HttpContextAccessor.HttpContext;
+        var localIp = ctx?.Connection.LocalIpAddress?.ToString();
+
+        if (!string.IsNullOrWhiteSpace(localIp))
+        {
+            if (localIp == "::1")
+            {
+                return "localhost";
+            }
+            else
+            {
+                return localIp;
+            }
+        }
+
+        // Fallback to host from NavigationManager (hostname part only)
+        var uri = new Uri(Nav.Uri);
+        return uri.Host;
+    }
+
+    private async Task<int> GetFirstPortAsync()
+    {
+        const string SettingsTableName = "SMTPSettings";
+        const string PartitionKey = "SmtpServer";
+        const string RowKey = "Current";
+        try
+        {
+            var table = TableServiceClient.GetTableClient(SettingsTableName);
+            var entityResponse = await table.GetEntityAsync<TableEntity>(PartitionKey, RowKey);
+            var entity = entityResponse.Value;
+            // Prefer PortsJson
+            if (entity.TryGetValue("PortsJson", out var portsJsonObj) && portsJsonObj is string portsJson && !string.IsNullOrWhiteSpace(portsJson))
+            {
+                try
+                {
+                    var ports = JsonSerializer.Deserialize<int[]>(portsJson) ?? Array.Empty<int>();
+                    var first = ports.FirstOrDefault();
+                    if (first > 0) return first;
+                }
+                catch { /* ignore parse errors */ }
+            }
+            if (entity.TryGetValue("Ports", out var portsCsvObj) && portsCsvObj is string portsCsv && !string.IsNullOrWhiteSpace(portsCsv))
+            {
+                var firstStr = portsCsv.Split(',').Select(s => s.Trim()).FirstOrDefault();
+                if (int.TryParse(firstStr, out var p) && p > 0) return p;
+            }
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Warning: Could not read SMTP port from table storage, falling back to 2525. {ex.Message}";
+        }
+        return 2525; // fallback development port
+    }
+
+    private async Task<(string? Username, string? Password)> GetCredentialsAsync()
+    {
+        const string SettingsTableName = "SMTPSettings";
+        const string PartitionKey = "SmtpServer";
+        const string RowKey = "Current";
+        try
+        {
+            var table = TableServiceClient.GetTableClient(SettingsTableName);
+            var entityResponse = await table.GetEntityAsync<TableEntity>(PartitionKey, RowKey);
+            var entity = entityResponse.Value;
+
+            string? username = null;
+            string? password = null;
+
+            if (entity.TryGetValue("AllowedUsername", out var userObj))
+            {
+                username = userObj?.ToString();
+            }
+            if (entity.TryGetValue("AllowedPassword", out var passObj))
+            {
+                password = passObj?.ToString();
+            }
+
+            return (username, password);
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Warning: Could not read SMTP credentials from table storage. {ex.Message}";
+            return (null, null);
+        }
+    }
+
+    private async Task SendAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_model.To))
+        {
+            _settingsError = "Recipient (To) is required.";
+            ShowError(_settingsError);
+            return;
+        }
+
+        try
+        {
+            _sending = true;
+
+            // Resolve host, port and credentials from Table Storage similar to SmtpTest
+            var smtpHost = ResolveSmtpHost();
+            var port = await GetFirstPortAsync();
+            var (username, password) = await GetCredentialsAsync();
+
+            using var client = new SmtpClient(smtpHost, port)
+            {
+                EnableSsl = false,
+                Timeout = 50000
+            };
+
+            if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
+            {
+                client.Credentials = new NetworkCredential(username, password);
+            }
+
+            var message = new MailMessage
+            {
+                From = new MailAddress(string.IsNullOrWhiteSpace(_model.From) ? "sender@example.com" : _model.From),
+                Subject = _model.Subject,
+                Body = _model.Body
+            };
+            message.To.Add(_model.To);
+
+            await client.SendMailAsync(message);
+            DialogService.Close(true);
+        }
+        catch (Exception ex)
+        {
+            _settingsError = $"Failed to send: {ex.Message}";
+            ShowError(_settingsError);
+        }
+        finally
+        {
+            _sending = false;
+        }
+    }
+}

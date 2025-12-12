@@ -14,13 +14,10 @@ if (builder.Environment.IsDevelopment())
 }
 
 // Add Blob storage resource
-var blobs = storage.AddBlobs("blobs");
+var blobs = storage.AddBlobs("emailblobs");
 
 // Add Table storage resource  
-var tables = storage.AddTables("tables");
-
-// Add Queue storage resource
-var queues = storage.AddQueues("queues");
+var tables = storage.AddTables("SMTPSettings");
 
 var blazorApp = builder.AddProject<Projects.BlazorSMTPForwarder_Web>("webfrontend")
     .WithExternalHttpEndpoints()
@@ -28,14 +25,12 @@ var blazorApp = builder.AddProject<Projects.BlazorSMTPForwarder_Web>("webfronten
     // Allow the Blazor app to access the blob resource for reading messages
     .WithReference(blobs)
     // Ensure Blazor app also gets a tables connection for settings/password
-    .WithReference(tables)
-    .WithReference(queues);
+    .WithReference(tables);
 
 // Add the SMTP Server service with storage dependencies and expose SMTP ports
 var smtpServer = builder.AddProject<Projects.BlazorSMTPForwarderSrv>("smtpserversvc")
     .WithReference(blobs)
     .WithReference(tables)
-    .WithReference(queues)
     .WithEndpoint("smtp-port1", endpoint =>
     {
         endpoint.Port = 25;

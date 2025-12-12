@@ -1,0 +1,602 @@
+@page "/settings"
+@using Azure.Data.Tables
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using BlazorSMTPForwarder.ServiceDefaults.Models
+@using BlazorSMTPForwarder.Web.Components.Dialogs
+@using Nager.Dns
+@using Nager.Dns.Models
+@using Org.BouncyCastle.Crypto
+@using Org.BouncyCastle.OpenSsl
+@using Org.BouncyCastle.Security
+@using Org.BouncyCastle.Crypto.Generators
+@using System.IO
+@inject TableServiceClient Tables
+@inject ILogger<Settings> Log
+@inject IConfiguration Config
+@inject IWebHostEnvironment Env
+@inject DialogService DialogService
+@inject IHttpClientFactory HttpClientFactory
+
+<div>
+    <h1 class="h3 mb-0">Settings</h1>
+    <br />
+    <RadzenTabs RenderMode="TabRenderMode.Client">
+        <Tabs>
+            <RadzenTabsItem Text="General">
+                <div class="mb-3">
+                    <RadzenButton Text="Test Server" Click="@OpenTestServerDialog" ButtonStyle="ButtonStyle.Info" />
+                </div>
+                <div class="row">
+                    <div class="col-md-8">
+                        @if (IsLoading)
+                        {
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        }
+                        else
+                        {
+                            if (Saved)
+                            {
+                                <div class="alert alert-success">Settings saved successfully.</div>
+                            }
+                            if (Error != null)
+                            {
+                                <div class="alert alert-danger">@Error</div>
+                            }
+
+                            <div class="card shadow-sm mb-4">
+                                <div class="card-body">
+                                    <h5 class="card-title">Server Configuration</h5>
+                                    <div class="row g-3">
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label">Server Name</label>
+                                            <input class="form-control" value="@ServerName" readonly disabled />
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label">Ports</label>
+                                            <input class="form-control" value="@Ports" readonly disabled />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Allowed Recipient (Primary)</label>
+                                            <input class="form-control" value="@AllowedRecipient" readonly disabled />
+                                        </div>
+
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label">Auth Username</label>
+                                            <input class="form-control" value="@AllowedUsername" readonly disabled />
+                                        </div>
+                                        <div class="col-12 col-md-6">
+                                            <label class="form-label">Auth Password</label>
+                                            <div class="input-group">
+                                                <input class="form-control"
+                                                       type="@(ShowAllowedPassword ? "text" : "password")"
+                                                       value="@AllowedPassword" readonly disabled />
+                                                <button class="btn btn-outline-secondary" type="button"
+                                                        @onclick="() => ShowAllowedPassword = !ShowAllowedPassword">
+                                                    @(ShowAllowedPassword ? "Hide" : "Show")
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="card shadow-sm mb-4">
+                                <div class="card-body">
+                                    <h5 class="card-title">Application Security</h5>
+                                    <form @onsubmit="SaveAsync">
+                                        <div class="row g-3">
+                                            <div class="col-12">
+                                                <label class="form-label" for="appPassword">App Access Password</label>
+                                                <div class="input-group">
+                                                    <input id="appPassword" class="form-control"
+                                                           type="@(ShowAppPassword ? "text" : "password")"
+                                                           @bind="AppPassword" placeholder="(no password set)" />
+                                                    <button class="btn btn-outline-secondary" type="button"
+                                                            @onclick="() => ShowAppPassword = !ShowAppPassword">
+                                                        @(ShowAppPassword ? "Hide" : "Show")
+                                                    </button>
+                                                </div>
+                                                <div class="form-text mb-3">
+                                                    Protects access to this UI. Blank means open
+                                                    access. (Stored in appsettings.json)
+                                                </div>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    <button type="submit" class="btn btn-primary"
+                                                            disabled="@(Saving || IsLoading)">
+                                                        @if (Saving)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm me-2" role="status"
+                                                                  aria-hidden="true"></span>
+                                                        }
+                                                        Save
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="DNS">
+                <div class="p-3">
+                    <div class="alert alert-info">
+                        These tools help verify your DNS records for SPF, DKIM, and DMARC.
+                    </div>
+
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <details>
+                                <summary class="h5 card-title mb-3" style="cursor: pointer">MX Record</summary>
+                                <p>Proper Value: <code>@ServerName</code> (Priority 10)</p>
+                                <RadzenButton Text="Verify MX" Click="@VerifyMX" IsBusy="@IsVerifyingMX" />
+                                @if (MxResult != null)
+                                {
+                                    <div class="mt-2 alert @(MxSuccess ? "alert-success" : "alert-warning")">
+                                        @MxResult
+                                    </div>
+                                }
+                            </details>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <details>
+                                <summary class="h5 card-title mb-3" style="cursor: pointer">SPF Record</summary>
+                                <p>Proper Value: <code>v=spf1 mx a:@ServerName -all</code></p>
+                                <RadzenButton Text="Verify SPF" Click="@VerifySPF" IsBusy="@IsVerifyingSPF" />
+                                @if (SpfResult != null)
+                                {
+                                    <div class="mt-2 alert @(SpfSuccess ? "alert-success" : "alert-warning")">
+                                        @SpfResult
+                                    </div>
+                                }
+                            </details>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <details>
+                                <summary class="h5 card-title mb-3" style="cursor: pointer">DMARC Record</summary>
+                                <p>Proper Value: <code>v=DMARC1; p=none; rua=mailto:postmaster@@@ServerName</code></p>
+                                <RadzenButton Text="Verify DMARC" Click="@VerifyDMARC" IsBusy="@IsVerifyingDMARC" />
+                                @if (DmarcResult != null)
+                                {
+                                    <div class="mt-2 alert @(DmarcSuccess ? "alert-success" : "alert-warning")">
+                                        @DmarcResult
+                                    </div>
+                                }
+                            </details>
+                        </div>
+                    </div>
+
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <details>
+                                <summary class="h5 card-title mb-3" style="cursor: pointer">DKIM Configuration & DNS Record</summary>
+                                <div class="row g-3 mt-2">
+                                    <div class="col-12">
+                                        <label class="form-label">DKIM Selector</label>
+                                        <input class="form-control" @bind="DkimSelector" placeholder="e.g. blazorsmtp" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">DKIM Domain</label>
+                                        <input class="form-control" @bind="DkimDomain" placeholder="e.g. example.com" />
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">Private Key (PEM)</label>
+                                        <textarea class="form-control" rows="5" @bind="DkimPrivateKey" placeholder="-----BEGIN RSA PRIVATE KEY..."></textarea>
+                                        <button class="btn btn-sm btn-secondary mt-2" @onclick="GenerateDkimKeys">Generate New Keys</button>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableDkimSigning" @bind="EnableDkimSigning" />
+                                            <label class="form-check-label" for="enableDkimSigning">Enable DKIM Signing for Outgoing Mail</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(DkimPublicKeyRecord))
+                                {
+                                    <div class="mt-3">
+                                        <h6>DNS TXT Record (Host: <code>@(DkimSelector)._domainkey</code>)</h6>
+                                        <div class="p-2 bg-light border rounded text-break font-monospace">
+                                            @DkimPublicKeyRecord
+                                        </div>
+                                    </div>
+                                }
+                                <div class="col-12">
+                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                </div>
+                            </details>
+                        </div>
+                    </div>
+                </div>
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="SPAM">
+                <div class="p-3">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Spam Configuration</h5>
+                            <div class="row g-3">
+                                <div class="col-12 col-md-6">
+                                    <br />
+                                    <label class="form-label" for="spamhausKey">Spamhaus Key</label>
+                                    <div class="input-group">
+                                        <input id="spamhausKey" class="form-control" autocomplete="off"
+                                               type="@(ShowSpamhausKey ? "text" : "password")"
+                                               placeholder="(not set)" value="@SpamhausKey" readonly
+                                               disabled />
+                                        <button class="btn btn-outline-secondary" type="button"
+                                                @onclick="() => ShowSpamhausKey = !ShowSpamhausKey" disabled>
+                                            @(ShowSpamhausKey ? "Hide" : "Show")
+                                        </button>
+                                    </div>
+                                    <div class="form-text">
+                                        Spamhaus DQS Key (Read-only from Table Storage)
+                                    </div>
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <br />
+                                    <label class="form-label">Spamhaus Account</label>
+                                    <input class="form-control" value="@SpamhausAccount" readonly disabled />
+                                </div>
+
+                                <div class="col-12">
+                                    <div class="d-flex gap-4 mt-2">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableSpam"
+                                                   checked="@EnableSpamFiltering" disabled />
+                                            <label class="form-check-label" for="enableSpam">
+                                                Enable Spamhaus
+                                                Filtering
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableSpf"
+                                                   checked="@EnableSpfCheck" disabled />
+                                            <label class="form-check-label" for="enableSpf">
+                                                Enable SPF
+                                                Check
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableDkim"
+                                                   checked="@EnableDkimCheck" disabled />
+                                            <label class="form-check-label" for="enableDkim">
+                                                Enable DKIM
+                                                Check
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="m-0">Spam Logs</h5>
+                        <div class="d-flex gap-2">
+                            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadSpamLogsAsync"
+                                          Size="ButtonSize.Small" Disabled="@IsLoadingSpam" />
+                            @if (_spamHasMore && !IsLoadingSpam)
+                            {
+                                <RadzenButton Icon="add" Text="More" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@LoadMoreSpamLogsAsync" />
+                            }
+                        </div>
+                    </div>
+
+                    @if (IsLoadingSpam && (SpamLogs == null || SpamLogs.Count == 0))
+                    {
+                        <div class="text-center p-3">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (SpamLogs == null || !SpamLogs.Any())
+                    {
+                        <div class="text-muted">No spam logs found.</div>
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="@SpamLogs" TItem="SpamLog" AllowPaging="true" PageSize="10"
+                                        AllowSorting="true" ColumnWidth="150px">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="SpamLog" Property="Timestamp" Title="Time" Width="160px">
+                                    <Template Context="data">
+                                        @data.Timestamp?.ToLocalTime().ToString("g")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="SpamLog" Property="From" Title="From" Width="200px" />
+                                <RadzenDataGridColumn TItem="SpamLog" Property="To" Title="To" Width="200px" />
+                                <RadzenDataGridColumn TItem="SpamLog" Property="Subject" Title="Subject" />
+                                <RadzenDataGridColumn TItem="SpamLog" Property="IP" Title="IP" Width="120px" />
+                            </Columns>
+                        </RadzenDataGrid>
+                        @if (IsLoadingSpam && SpamLogs.Count > 0)
+                        {
+                            <div class="mt-2 text-muted">Loading more...</div>
+                        }
+                    }
+                </div>
+            </RadzenTabsItem>
+        </Tabs>
+    </RadzenTabs>
+</div>
+
+@code {
+    const string TableName = "SMTPSettings";
+    const string PK = "SmtpServer";
+    const string RKSettings = "Current";
+
+    string? ServerName; string? Ports; string? AllowedRecipient; string? AllowedUsername; string? AllowedPassword; string?
+    AppPassword; string? SpamhausKey; string? SpamhausAccount;
+    string? DkimPrivateKey; string? DkimSelector; string? DkimDomain;
+    bool Saved; string? Error;
+
+    bool IsLoading; bool Saving; bool ShowAllowedPassword; bool ShowSpamhausKey; bool ShowAppPassword;
+
+    bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck; bool EnableDkimSigning;
+
+    bool IsVerifyingMX;
+    string? MxResult;
+    bool MxSuccess;
+
+    bool IsVerifyingSPF;
+    string? SpfResult;
+    bool SpfSuccess;
+
+    bool IsVerifyingDMARC;
+    string? DmarcResult;
+    bool DmarcSuccess;
+
+    string? DkimPublicKeyRecord;
+
+    async Task OpenTestServerDialog()
+    {
+        await DialogService.OpenAsync<SmtpTest>("SMTP Server Test",
+               null,
+               new DialogOptions() { Width = "800px", Height = "800px", Resizable = true, Draggable = true });
+    }
+
+    // Spam Log Logic
+    List<SpamLog>? SpamLogs;
+    bool IsLoadingSpam;
+    string? _spamContinuationToken; // paging token
+    bool _spamHasMore; // more pages flag
+    readonly int _spamPageSize = 200; // page size for table query
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+        _ = LoadSpamLogsAsync();
+    }
+
+    async Task LoadAsync()
+    {
+        IsLoading = true; Error = null; Saved = false;
+        try
+        {
+            var table = Tables.GetTableClient(TableName);
+            await table.CreateIfNotExistsAsync();
+            var settings = await table.GetEntityIfExistsAsync<TableEntity>(PK, RKSettings);
+            if (settings.HasValue)
+            {
+                ServerName = settings.Value?.GetString("ServerName");
+                Ports = settings.Value?.GetString("Ports");
+                AllowedRecipient = settings.Value?.GetString("AllowedRecipient");
+                AllowedUsername = settings.Value?.GetString("AllowedUsername");
+                AllowedPassword = settings.Value?.GetString("AllowedPassword");
+
+                SpamhausKey = settings.Value?.GetString("SpamhausKey");
+
+                SpamhausAccount = settings.Value?.GetString("SpamhausAccount");
+
+                EnableSpamFiltering = settings.Value?.GetBoolean("EnableSpamFiltering") ?? false;
+                EnableSpfCheck = settings.Value?.GetBoolean("EnableSpfCheck") ?? false;
+                EnableDmarcCheck = settings.Value?.GetBoolean("EnableDmarcCheck") ?? false;
+                EnableDkimCheck = settings.Value?.GetBoolean("EnableDkimCheck") ?? false;
+                DkimPrivateKey = settings.Value?.GetString("DkimPrivateKey");
+                DkimSelector = settings.Value?.GetString("DkimSelector");
+                if (string.IsNullOrEmpty(DkimSelector)) DkimSelector = "blazorsmtp";
+                DkimDomain = settings.Value?.GetString("DkimDomain");
+                if (string.IsNullOrEmpty(DkimDomain)) DkimDomain = ServerName;
+                EnableDkimSigning = settings.Value?.GetBoolean("EnableDkimSigning") ?? false;
+
+                if (!string.IsNullOrEmpty(DkimPrivateKey))
+                {
+                    GenerateDkimDnsRecord();
+                }
+            }
+            AppPassword = Config["AppPassword"];
+        }
+        catch (Exception ex) { Error = ex.Message; Log.LogError(ex, "Load failed"); }
+        finally { IsLoading = false; }
+    }
+
+    async Task SaveAsync()
+    {
+        Error = null; Saved = false; Saving = true;
+        try
+        {
+            await SaveAppPasswordToAppSettingsAsync(AppPassword ?? string.Empty);
+
+            var table = Tables.GetTableClient(TableName);
+            await table.CreateIfNotExistsAsync();
+
+            var entity = new TableEntity(PK, RKSettings)
+            {
+                { "DkimPrivateKey", DkimPrivateKey },
+                { "DkimSelector", DkimSelector },
+                { "DkimDomain", DkimDomain },
+                { "EnableDkimSigning", EnableDkimSigning }
+            };
+            await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
+
+            Saved = true;
+        }
+        catch (Exception ex) { Error = ex.Message; Log.LogError(ex, "Save failed"); }
+        finally { Saving = false; }
+    }
+
+    async Task SaveAppPasswordToAppSettingsAsync(string value)
+    {
+        var path = Path.Combine(Env.ContentRootPath, "appsettings.json");
+        JsonObject root;
+        try
+        {
+            if (File.Exists(path))
+            {
+                var json = await File.ReadAllTextAsync(path);
+                root = JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+            }
+            else
+            {
+                root = new JsonObject();
+            }
+        }
+        catch
+        {
+            root = new JsonObject();
+        }
+
+        root["AppPassword"] = value;
+
+        await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // ... (DNS Verification methods omitted for brevity, they use DnsClient) ...
+    async Task VerifyMX() { /* ... */ }
+    async Task VerifySPF() { /* ... */ }
+    async Task VerifyDMARC() { /* ... */ }
+
+    void GenerateDkimKeys()
+    {
+        try
+        {
+            var generator = new RsaKeyPairGenerator();
+            generator.Init(new KeyGenerationParameters(new SecureRandom(), 2048));
+            var pair = generator.GenerateKeyPair();
+
+            using var sw = new StringWriter();
+            var pemWriter = new PemWriter(sw);
+            pemWriter.WriteObject(pair.Private);
+            DkimPrivateKey = sw.ToString();
+
+            GenerateDkimDnsRecord();
+        }
+        catch (Exception ex)
+        {
+            Error = "Failed to generate keys: " + ex.Message;
+        }
+    }
+
+    void GenerateDkimDnsRecord()
+    {
+        if (string.IsNullOrEmpty(DkimPrivateKey)) return;
+        try
+        {
+            using var sr = new StringReader(DkimPrivateKey);
+            var pemReader = new PemReader(sr);
+            var keyPair = (AsymmetricCipherKeyPair)pemReader.ReadObject();
+            var publicKey = keyPair.Public;
+
+            using var sw = new StringWriter();
+            var pemWriter = new PemWriter(sw);
+            pemWriter.WriteObject(publicKey);
+            var pem = sw.ToString();
+            
+            // Extract base64 body
+            var lines = pem.Split('\n').Where(l => !l.StartsWith("-----")).Select(l => l.Trim());
+            var base64 = string.Join("", lines);
+
+            DkimPublicKeyRecord = $"v=DKIM1; k=rsa; p={base64}";
+        }
+        catch
+        {
+            DkimPublicKeyRecord = "(error generating record)";
+        }
+    }
+
+    async Task LoadSpamLogsAsync()
+    {
+        // Initial load or refresh -> reset paging state
+        _spamContinuationToken = null;
+        _spamHasMore = true;
+        SpamLogs = new List<SpamLog>();
+        await LoadMoreSpamLogsAsync();
+    }
+
+    async Task LoadMoreSpamLogsAsync()
+    {
+        if (IsLoadingSpam || !_spamHasMore) return;
+        IsLoadingSpam = true;
+        try
+        {
+            var table = Tables.GetTableClient("spamlogs");
+            await table.CreateIfNotExistsAsync();
+
+            await foreach (var page in table.QueryAsync<TableEntity>().AsPages(_spamContinuationToken, _spamPageSize))
+            {
+                foreach (var entity in page.Values)
+                {
+                    // Map TableEntity -> SpamLog
+                    var log = new SpamLog
+                    {
+                        PartitionKey = entity.PartitionKey,
+                        RowKey = entity.RowKey,
+                        Timestamp = ExtractSpamTimestamp(entity),
+                        SessionId = entity.TryGetValue("SessionId", out var session) ? session?.ToString() : null,
+                        TransactionId = entity.TryGetValue("TransactionId", out var txn) ? txn?.ToString() : null,
+                        From = entity.TryGetValue("From", out var from) ? from?.ToString() : null,
+                        To = entity.TryGetValue("To", out var to) ? to?.ToString() : null,
+                        Subject = entity.TryGetValue("Subject", out var subj) ? subj?.ToString() : null,
+                        BlobPath = entity.TryGetValue("BlobPath", out var blob) ? blob?.ToString() : null,
+                        IP = entity.TryGetValue("IP", out var ip) ? ip?.ToString() : null
+                    };
+                    SpamLogs!.Add(log);
+                }
+                _spamContinuationToken = page.ContinuationToken;
+                _spamHasMore = !string.IsNullOrEmpty(_spamContinuationToken);
+                break; // only one page per call
+            }
+
+            // Order descending by timestamp after adding page
+            SpamLogs = SpamLogs?.OrderByDescending(x => x.Timestamp).ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to load spam logs page");
+            _spamHasMore = false;
+        }
+        finally
+        {
+            IsLoadingSpam = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    static DateTimeOffset? ExtractSpamTimestamp(TableEntity entity)
+    {
+        try
+        {
+            if (entity.TryGetValue("Timestamp", out var tsObj) && tsObj is not null)
+            {
+                if (tsObj is DateTime dt) return new DateTimeOffset(dt.ToUniversalTime());
+                if (tsObj is DateTimeOffset dto) return dto.ToUniversalTime();
+                if (DateTime.TryParse(tsObj.ToString(), out var parsed)) return new DateTimeOffset(parsed.ToUniversalTime());
+            }
+        }
+        catch { }
+        return entity.Timestamp;
+    }
+}

@@ -1,0 +1,147 @@
+@using BlazorSMTPForwarder.Web.Services
+@inject IJSRuntime JSRuntime
+@inject Azure.Data.Tables.TableServiceClient TableServiceClient
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpContextAccessor
+
+<PageTitle>SMTP Server Test</PageTitle>
+
+<p>This page allows you to test the SMTP server functionality.</p>
+
+<div class="mb-3">
+    <button class="btn btn-primary" @onclick="RunSmtpTest" disabled="@isRunning">
+        @if (isRunning)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <span>Running Tests...</span>
+        }
+        else
+        {
+            <span>Run SMTP Tests</span>
+        }
+    </button>
+
+    <button class="btn btn-danger ms-2" @onclick="RunSpamTest" disabled="@isSpamRunning">
+        @if (isSpamRunning)
+        {
+            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            <span>Running...</span>
+        }
+        else
+        {
+            <span>Trigger Spamhaus Test</span>
+        }
+    </button>
+</div>
+
+@if (!string.IsNullOrEmpty(testResult))
+{
+    <div class="alert @(testSuccess ? "alert-success" : "alert-danger")" role="alert">
+        <h5>Test Result</h5>
+        <pre>@testResult</pre>
+    </div>
+}
+
+@if (testLogs.Any())
+{
+    <div class="mt-4">
+        <h5>Test Output</h5>
+        <div class="border p-3" style="max-height: 400px; overflow-y: auto; background-color: #f8f9fa;">
+            @foreach (var log in testLogs)
+            {
+                <div class="font-monospace small">@log</div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool isRunning = false;
+    private bool isSpamRunning = false;
+    private string testResult = string.Empty;
+    private bool testSuccess = false;
+    private List<string> testLogs = new();
+
+    private string ResolveSmtpHost()
+    {
+        // Prefer server local IP from HttpContext if available
+        var ctx = HttpContextAccessor.HttpContext;
+        var localIp = ctx?.Connection.LocalIpAddress?.ToString();
+
+        if (!string.IsNullOrWhiteSpace(localIp))
+        {
+            if (localIp == "::1")
+            {
+                return "localhost";
+            }
+            else
+            {
+                return localIp;
+            }
+        }
+
+        // Fallback to host from NavigationManager (hostname part only)
+        var uri = new Uri(Nav.Uri);
+        return uri.Host;
+    }
+
+    private async Task RunSmtpTest()
+    {
+        isRunning = true;
+        StateHasChanged();
+        await RunTest(async (host) => await SmtpTestClient.TestSmtpServer(TableServiceClient, host));
+    }
+
+    private async Task RunSpamTest()
+    {
+        isSpamRunning = true;
+        StateHasChanged();
+        await RunTest(async (host) => await SmtpTestClient.SendSpamTestEmail(TableServiceClient, host));
+    }
+
+    private async Task RunTest(Func<string, Task> testAction)
+    {
+        testResult = string.Empty;
+        testLogs.Clear();
+        testSuccess = false;
+
+        StateHasChanged();
+
+        try
+        {
+            // Capture console output
+            var originalOut = Console.Out;
+            using var stringWriter = new StringWriter();
+            Console.SetOut(stringWriter);
+
+            var smtpHost = ResolveSmtpHost();
+            await testAction(smtpHost);
+
+            // Restore console output
+            Console.SetOut(originalOut);
+
+            // Get the captured output
+            var output = stringWriter.ToString();
+            testLogs = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
+
+            testResult = "Tests completed!";
+            testSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            testResult = $"Tests failed: {ex.Message}";
+            testSuccess = false;
+            testLogs.Add($"Error: {ex.Message}");
+            if (ex.InnerException != null)
+            {
+                testLogs.Add($"Inner Exception: {ex.InnerException.Message}");
+            }
+        }
+        finally
+        {
+            isSpamRunning = false;
+            isRunning = false;
+            StateHasChanged();
+        }
+    }
+}

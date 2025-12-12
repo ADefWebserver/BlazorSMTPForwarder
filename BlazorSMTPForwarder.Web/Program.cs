@@ -1,10 +1,23 @@
 using BlazorSMTPForwarder.Web;
 using BlazorSMTPForwarder.Web.Components;
+using BlazorSMTPForwarder.Web.Services;
+using Radzen;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add service defaults & Aspire client integrations.
 builder.AddServiceDefaults();
+
+// Add Azure clients
+builder.AddAzureTableClient("SMTPSettings");
+builder.AddAzureBlobClient("emailblobs");
+
+// Add application services
+builder.Services.AddScoped<BlobEmailService>();
+builder.Services.AddScoped<SmtpTestClient>();
+
+// Add Radzen services
+builder.Services.AddRadzenComponents();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
