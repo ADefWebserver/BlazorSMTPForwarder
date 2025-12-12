@@ -1,5 +1,4 @@
 @page "/settings"
-@rendermode InteractiveServer
 @using Azure.Data.Tables
 @using System.Text.Json
 @using System.Text.Json.Nodes
@@ -27,7 +26,6 @@
         <Tabs>
             <RadzenTabsItem Text="General">
                 <div class="mb-3 d-flex gap-2">
-                    <RadzenButton Text="Test Server" Click="@OpenTestServerDialog" ButtonStyle="ButtonStyle.Info" />
                     <RadzenButton Text="Reset Server" Click="@RequestServerRestart" ButtonStyle="ButtonStyle.Warning" />
                 </div>
                 <div class="row">
@@ -464,13 +462,6 @@
     bool DmarcSuccess;
 
     string? DkimPublicKeyRecord;
-
-    async Task OpenTestServerDialog()
-    {
-        await DialogService.OpenAsync<SmtpTest>("SMTP Server Test",
-               null,
-               new DialogOptions() { Width = "800px", Height = "800px", Resizable = true, Draggable = true });
-    }
 
     // Spam Log Logic
     List<SpamLog>? SpamLogs;
