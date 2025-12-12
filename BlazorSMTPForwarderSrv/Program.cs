@@ -9,8 +9,8 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.AddServiceDefaults();
 
 // Add Azure Storage
-builder.AddAzureTableClient("SMTPSettings");
-builder.AddAzureBlobClient("emailblobs");
+builder.AddAzureTableServiceClient("SMTPSettings");
+builder.AddAzureBlobServiceClient("emailblobs");
 
 // Configure SMTP Settings
 builder.Services.Configure<SmtpServerConfiguration>(builder.Configuration.GetSection("SmtpServer"));

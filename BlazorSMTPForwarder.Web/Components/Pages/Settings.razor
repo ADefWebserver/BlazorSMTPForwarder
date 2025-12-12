@@ -157,7 +157,7 @@
                     <div class="mb-3">
                         <RadzenButton Text="Add Domain" Click="@AddDomain" ButtonStyle="ButtonStyle.Success" Icon="add" />
                     </div>
-                    
+
                     @foreach (var domain in Domains)
                     {
                         <div class="card shadow-sm mb-4">
@@ -174,7 +174,7 @@
                                         <label class="form-label">Domain Name</label>
                                         <input class="form-control" @bind="domain.DomainName" />
                                     </div>
-                                    
+
                                     <div class="col-12">
                                         <h6>Catch-All Action</h6>
                                         <div class="input-group mb-2">
@@ -217,107 +217,9 @@
                             </div>
                         </div>
                     }
-                    
+
                     <div class="mt-3">
                         <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                    </div>
-                </div>
-            </RadzenTabsItem>
-
-            <RadzenTabsItem Text="DNS">
-                <div class="p-3">
-                    <div class="alert alert-info">
-                        These tools help verify your DNS records for SPF, DKIM, and DMARC.
-                    </div>
-
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <details>
-                                <summary class="h5 card-title mb-3" style="cursor: pointer">MX Record</summary>
-                                <p>Proper Value: <code>@ServerName</code> (Priority 10)</p>
-                                <RadzenButton Text="Verify MX" Click="@VerifyMX" IsBusy="@IsVerifyingMX" />
-                                @if (MxResult != null)
-                                {
-                                    <div class="mt-2 alert @(MxSuccess ? "alert-success" : "alert-warning")">
-                                        @MxResult
-                                    </div>
-                                }
-                            </details>
-                        </div>
-                    </div>
-
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <details>
-                                <summary class="h5 card-title mb-3" style="cursor: pointer">SPF Record</summary>
-                                <p>Proper Value: <code>v=spf1 mx a:@ServerName -all</code></p>
-                                <RadzenButton Text="Verify SPF" Click="@VerifySPF" IsBusy="@IsVerifyingSPF" />
-                                @if (SpfResult != null)
-                                {
-                                    <div class="mt-2 alert @(SpfSuccess ? "alert-success" : "alert-warning")">
-                                        @SpfResult
-                                    </div>
-                                }
-                            </details>
-                        </div>
-                    </div>
-
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <details>
-                                <summary class="h5 card-title mb-3" style="cursor: pointer">DMARC Record</summary>
-                                <p>Proper Value: <code>v=DMARC1; p=none; rua=mailto:postmaster@@@ServerName</code></p>
-                                <RadzenButton Text="Verify DMARC" Click="@VerifyDMARC" IsBusy="@IsVerifyingDMARC" />
-                                @if (DmarcResult != null)
-                                {
-                                    <div class="mt-2 alert @(DmarcSuccess ? "alert-success" : "alert-warning")">
-                                        @DmarcResult
-                                    </div>
-                                }
-                            </details>
-                        </div>
-                    </div>
-
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <details>
-                                <summary class="h5 card-title mb-3" style="cursor: pointer">DKIM Configuration & DNS Record</summary>
-                                <div class="row g-3 mt-2">
-                                    <div class="col-12">
-                                        <label class="form-label">DKIM Selector</label>
-                                        <input class="form-control" @bind="DkimSelector" placeholder="e.g. blazorsmtp" />
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label">DKIM Domain</label>
-                                        <input class="form-control" @bind="DkimDomain" placeholder="e.g. example.com" />
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label">Private Key (PEM)</label>
-                                        <textarea class="form-control" rows="5" @bind="DkimPrivateKey" placeholder="-----BEGIN RSA PRIVATE KEY..."></textarea>
-                                        <button class="btn btn-sm btn-secondary mt-2" @onclick="GenerateDkimKeys">Generate New Keys</button>
-                                    </div>
-                                    <div class="col-12">
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="enableDkimSigning" @bind="EnableDkimSigning" />
-                                            <label class="form-check-label" for="enableDkimSigning">Enable DKIM Signing for Outgoing Mail</label>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                @if (!string.IsNullOrEmpty(DkimPublicKeyRecord))
-                                {
-                                    <div class="mt-3">
-                                        <h6>DNS TXT Record (Host: <code>@(DkimSelector)._domainkey</code>)</h6>
-                                        <div class="p-2 bg-light border rounded text-break font-monospace">
-                                            @DkimPublicKeyRecord
-                                        </div>
-                                    </div>
-                                }
-                                <div class="col-12">
-                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                                </div>
-                            </details>
-                        </div>
                     </div>
                 </div>
             </RadzenTabsItem>
@@ -440,28 +342,13 @@
 
     string? ServerName; string? Ports; string? AllowedRecipient; string? AllowedUsername; string? AllowedPassword; string?
     AppPassword; string? SpamhausKey; string? SpamhausAccount;
-    string? DkimPrivateKey; string? DkimSelector; string? DkimDomain;
     string? SendGridApiKey; string? SendGridFromEmail; string? SendGridFromName;
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
     bool IsLoading; bool Saving; bool ShowAllowedPassword; bool ShowSpamhausKey; bool ShowAppPassword;
 
-    bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck; bool EnableDkimSigning;
-
-    bool IsVerifyingMX;
-    string? MxResult;
-    bool MxSuccess;
-
-    bool IsVerifyingSPF;
-    string? SpfResult;
-    bool SpfSuccess;
-
-    bool IsVerifyingDMARC;
-    string? DmarcResult;
-    bool DmarcSuccess;
-
-    string? DkimPublicKeyRecord;
+    bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck;
 
     // Spam Log Logic
     List<SpamLog>? SpamLogs;
@@ -511,17 +398,6 @@
                 EnableSpfCheck = settings.Value?.GetBoolean("EnableSpfCheck") ?? false;
                 EnableDmarcCheck = settings.Value?.GetBoolean("EnableDmarcCheck") ?? false;
                 EnableDkimCheck = settings.Value?.GetBoolean("EnableDkimCheck") ?? false;
-                DkimPrivateKey = settings.Value?.GetString("DkimPrivateKey");
-                DkimSelector = settings.Value?.GetString("DkimSelector");
-                if (string.IsNullOrEmpty(DkimSelector)) DkimSelector = "blazorsmtp";
-                DkimDomain = settings.Value?.GetString("DkimDomain");
-                if (string.IsNullOrEmpty(DkimDomain)) DkimDomain = ServerName;
-                EnableDkimSigning = settings.Value?.GetBoolean("EnableDkimSigning") ?? false;
-
-                if (!string.IsNullOrEmpty(DkimPrivateKey))
-                {
-                    GenerateDkimDnsRecord();
-                }
             }
             AppPassword = Config["AppPassword"];
         }
@@ -541,10 +417,6 @@
 
             var entity = new TableEntity(PK, RKSettings)
             {
-                { "DkimPrivateKey", DkimPrivateKey },
-                { "DkimSelector", DkimSelector },
-                { "DkimDomain", DkimDomain },
-                { "EnableDkimSigning", EnableDkimSigning },
                 { "SendGridApiKey", SendGridApiKey },
                 { "SendGridFromEmail", SendGridFromEmail },
                 { "SendGridFromName", SendGridFromName },
@@ -584,32 +456,6 @@
         await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    // ... (DNS Verification methods omitted for brevity, they use DnsClient) ...
-    async Task VerifyMX() { /* ... */ }
-    async Task VerifySPF() { /* ... */ }
-    async Task VerifyDMARC() { /* ... */ }
-
-    void GenerateDkimKeys()
-    {
-        try
-        {
-            var generator = new RsaKeyPairGenerator();
-            generator.Init(new KeyGenerationParameters(new SecureRandom(), 2048));
-            var pair = generator.GenerateKeyPair();
-
-            using var sw = new StringWriter();
-            var pemWriter = new PemWriter(sw);
-            pemWriter.WriteObject(pair.Private);
-            DkimPrivateKey = sw.ToString();
-
-            GenerateDkimDnsRecord();
-        }
-        catch (Exception ex)
-        {
-            Error = "Failed to generate keys: " + ex.Message;
-        }
-    }
-
     async Task RequestServerRestart()
     {
         try
@@ -642,7 +488,7 @@
     async Task CheckDomainDns(DomainConfiguration domain)
     {
         if (string.IsNullOrWhiteSpace(domain.DomainName)) return;
-        
+
         try
         {
             var lookup = new LookupClient();
@@ -661,33 +507,6 @@
         catch (Exception ex)
         {
             await DialogService.Alert($"DNS check failed: {ex.Message}", "Error");
-        }
-    }
-
-    void GenerateDkimDnsRecord()
-    {
-        if (string.IsNullOrEmpty(DkimPrivateKey)) return;
-        try
-        {
-            using var sr = new StringReader(DkimPrivateKey);
-            var pemReader = new PemReader(sr);
-            var keyPair = (AsymmetricCipherKeyPair)pemReader.ReadObject();
-            var publicKey = keyPair.Public;
-
-            using var sw = new StringWriter();
-            var pemWriter = new PemWriter(sw);
-            pemWriter.WriteObject(publicKey);
-            var pem = sw.ToString();
-            
-            // Extract base64 body
-            var lines = pem.Split('\n').Where(l => !l.StartsWith("-----")).Select(l => l.Trim());
-            var base64 = string.Join("", lines);
-
-            DkimPublicKeyRecord = $"v=DKIM1; k=rsa; p={base64}";
-        }
-        catch
-        {
-            DkimPublicKeyRecord = "(error generating record)";
         }
     }
 

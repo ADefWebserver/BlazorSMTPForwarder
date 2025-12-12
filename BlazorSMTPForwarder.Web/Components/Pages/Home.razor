@@ -114,7 +114,6 @@
     private bool _isLoadingContent;
 
     // SMTP settings from table
-    private bool _settingsLoaded;
     private string? _settingsError;
     private string? _allowedRecipient;
 
@@ -152,9 +151,8 @@
             var response = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current");
             if (response.HasValue)
             {
-                _allowedRecipient = response.Value.GetString("AllowedRecipient");
+                _allowedRecipient = response.Value?.GetString("AllowedRecipient");
             }
-            _settingsLoaded = true;
         }
         catch (Exception ex)
         {
