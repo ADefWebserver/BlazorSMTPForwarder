@@ -1,4 +1,5 @@
 @page "/settings"
+@rendermode InteractiveServer
 @using Azure.Data.Tables
 @using System.Text.Json
 @using System.Text.Json.Nodes
@@ -6,6 +7,7 @@
 @using BlazorSMTPForwarder.Web.Components.Dialogs
 @using Nager.Dns
 @using Nager.Dns.Models
+@using DnsClient
 @using Org.BouncyCastle.Crypto
 @using Org.BouncyCastle.OpenSsl
 @using Org.BouncyCastle.Security
@@ -24,8 +26,9 @@
     <RadzenTabs RenderMode="TabRenderMode.Client">
         <Tabs>
             <RadzenTabsItem Text="General">
-                <div class="mb-3">
+                <div class="mb-3 d-flex gap-2">
                     <RadzenButton Text="Test Server" Click="@OpenTestServerDialog" ButtonStyle="ButtonStyle.Info" />
+                    <RadzenButton Text="Reset Server" Click="@RequestServerRestart" ButtonStyle="ButtonStyle.Warning" />
                 </div>
                 <div class="row">
                     <div class="col-md-8">
@@ -120,6 +123,105 @@
                                 </div>
                             </div>
                         }
+                    </div>
+                </div>
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="SendGrid">
+                <div class="p-3">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">SendGrid Configuration</h5>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">API Key</label>
+                                    <input class="form-control" @bind="SendGridApiKey" type="password" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">From Email</label>
+                                    <input class="form-control" @bind="SendGridFromEmail" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">From Name</label>
+                                    <input class="form-control" @bind="SendGridFromName" />
+                                </div>
+                                <div class="col-12">
+                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="Domains">
+                <div class="p-3">
+                    <div class="mb-3">
+                        <RadzenButton Text="Add Domain" Click="@AddDomain" ButtonStyle="ButtonStyle.Success" Icon="add" />
+                    </div>
+                    
+                    @foreach (var domain in Domains)
+                    {
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <h5 class="m-0">@domain.DomainName</h5>
+                                <div>
+                                    <RadzenButton Text="Check DNS" Click="@(() => CheckDomainDns(domain))" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" />
+                                    <RadzenButton Icon="delete" Click="@(() => RemoveDomain(domain))" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" />
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <label class="form-label">Domain Name</label>
+                                        <input class="form-control" @bind="domain.DomainName" />
+                                    </div>
+                                    
+                                    <div class="col-12">
+                                        <h6>Catch-All Action</h6>
+                                        <div class="input-group mb-2">
+                                            <select class="form-select" @bind="domain.CatchAll.Type">
+                                                <option value="@CatchAllType.Reject">Reject</option>
+                                                <option value="@CatchAllType.Delete">Delete</option>
+                                                <option value="@CatchAllType.Forward">Forward</option>
+                                            </select>
+                                            @if (domain.CatchAll.Type == CatchAllType.Forward)
+                                            {
+                                                <input class="form-control" @bind="domain.CatchAll.ForwardToEmail" placeholder="Forward to..." />
+                                            }
+                                        </div>
+                                    </div>
+
+                                    <div class="col-12">
+                                        <h6>Forwarding Rules</h6>
+                                        <table class="table table-sm">
+                                            <thead>
+                                                <tr>
+                                                    <th>Incoming Email</th>
+                                                    <th>Destination Email</th>
+                                                    <th></th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var rule in domain.ForwardingRules)
+                                                {
+                                                    <tr>
+                                                        <td><input class="form-control form-control-sm" @bind="rule.IncomingEmail" /></td>
+                                                        <td><input class="form-control form-control-sm" @bind="rule.DestinationEmail" /></td>
+                                                        <td><RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Danger" Click="@(() => domain.ForwardingRules.Remove(rule))" /></td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                        <RadzenButton Text="Add Rule" Size="ButtonSize.Small" Click="@(() => domain.ForwardingRules.Add(new EmailForwardingRule()))" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    
+                    <div class="mt-3">
+                        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
                     </div>
                 </div>
             </RadzenTabsItem>
@@ -341,6 +443,8 @@
     string? ServerName; string? Ports; string? AllowedRecipient; string? AllowedUsername; string? AllowedPassword; string?
     AppPassword; string? SpamhausKey; string? SpamhausAccount;
     string? DkimPrivateKey; string? DkimSelector; string? DkimDomain;
+    string? SendGridApiKey; string? SendGridFromEmail; string? SendGridFromName;
+    List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
     bool IsLoading; bool Saving; bool ShowAllowedPassword; bool ShowSpamhausKey; bool ShowAppPassword;
@@ -401,6 +505,17 @@
 
                 SpamhausAccount = settings.Value?.GetString("SpamhausAccount");
 
+                SendGridApiKey = settings.Value?.GetString("SendGridApiKey");
+                SendGridFromEmail = settings.Value?.GetString("SendGridFromEmail");
+                SendGridFromName = settings.Value?.GetString("SendGridFromName");
+
+                var domainsJson = settings.Value?.GetString("DomainsJson");
+                if (!string.IsNullOrEmpty(domainsJson))
+                {
+                    try { Domains = JsonSerializer.Deserialize<List<DomainConfiguration>>(domainsJson) ?? new(); }
+                    catch { Domains = new(); }
+                }
+
                 EnableSpamFiltering = settings.Value?.GetBoolean("EnableSpamFiltering") ?? false;
                 EnableSpfCheck = settings.Value?.GetBoolean("EnableSpfCheck") ?? false;
                 EnableDmarcCheck = settings.Value?.GetBoolean("EnableDmarcCheck") ?? false;
@@ -438,7 +553,11 @@
                 { "DkimPrivateKey", DkimPrivateKey },
                 { "DkimSelector", DkimSelector },
                 { "DkimDomain", DkimDomain },
-                { "EnableDkimSigning", EnableDkimSigning }
+                { "EnableDkimSigning", EnableDkimSigning },
+                { "SendGridApiKey", SendGridApiKey },
+                { "SendGridFromEmail", SendGridFromEmail },
+                { "SendGridFromName", SendGridFromName },
+                { "DomainsJson", JsonSerializer.Serialize(Domains) }
             };
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
 
@@ -497,6 +616,60 @@
         catch (Exception ex)
         {
             Error = "Failed to generate keys: " + ex.Message;
+        }
+    }
+
+    async Task RequestServerRestart()
+    {
+        try
+        {
+            var table = Tables.GetTableClient(TableName);
+            await table.CreateIfNotExistsAsync();
+            var entity = new TableEntity(PK, RKSettings)
+            {
+                { "RestartRequested", DateTime.UtcNow }
+            };
+            await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
+            await DialogService.Alert("Restart signal sent to SMTP Service.", "Restart Requested");
+        }
+        catch (Exception ex)
+        {
+            await DialogService.Alert($"Failed to send restart signal: {ex.Message}", "Error");
+        }
+    }
+
+    void AddDomain()
+    {
+        Domains.Add(new DomainConfiguration { DomainName = "new-domain.com" });
+    }
+
+    void RemoveDomain(DomainConfiguration domain)
+    {
+        Domains.Remove(domain);
+    }
+
+    async Task CheckDomainDns(DomainConfiguration domain)
+    {
+        if (string.IsNullOrWhiteSpace(domain.DomainName)) return;
+        
+        try
+        {
+            var lookup = new LookupClient();
+            var result = await lookup.QueryAsync(domain.DomainName, QueryType.MX);
+            var record = result.Answers.MxRecords().OrderBy(x => x.Preference).FirstOrDefault();
+
+            if (record != null && string.Equals(record.Exchange, ServerName, StringComparison.OrdinalIgnoreCase))
+            {
+                await DialogService.Alert($"MX record for {domain.DomainName} is correct ({record.Exchange}).", "DNS Check");
+            }
+            else
+            {
+                await DialogService.Alert($"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {ServerName}", "DNS Check");
+            }
+        }
+        catch (Exception ex)
+        {
+            await DialogService.Alert($"DNS check failed: {ex.Message}", "Error");
         }
     }
 
