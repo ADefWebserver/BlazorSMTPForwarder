@@ -1,6 +1,7 @@
 using BlazorSMTPForwarder.Web;
 using BlazorSMTPForwarder.Web.Components;
 using BlazorSMTPForwarder.Web.Services;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
 using Radzen;
 
@@ -19,6 +20,13 @@ builder.Services.AddScoped<SmtpTestClient>();
 builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.LoginPath = "/login";
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(20);
+    });
+builder.Services.AddAuthorization();
 
 // Add Radzen services
 builder.Services.AddRadzenComponents();

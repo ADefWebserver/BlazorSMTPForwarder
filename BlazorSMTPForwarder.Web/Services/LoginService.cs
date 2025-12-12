@@ -19,7 +19,7 @@ public class LoginService
         var appPassword = _config["AppPassword"];
         
         // If no password is set in config, we are always logged in (or login always succeeds)
-        if (string.IsNullOrEmpty(appPassword))
+        if (string.IsNullOrWhiteSpace(appPassword))
         {
             IsLoggedIn = true;
             NotifyStateChanged();
@@ -44,7 +44,7 @@ public class LoginService
     
     public bool CheckIfPasswordIsSet()
     {
-        return !string.IsNullOrEmpty(_config["AppPassword"]);
+        return !string.IsNullOrWhiteSpace(_config["AppPassword"]);
     }
 
     private void NotifyStateChanged() => OnChange?.Invoke();
