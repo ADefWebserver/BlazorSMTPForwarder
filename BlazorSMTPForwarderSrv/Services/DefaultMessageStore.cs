@@ -38,6 +38,7 @@ public class DefaultMessageStore : MessageStore
     // In-memory settings (refreshed from Table)
     private bool _enableSpamFiltering;
     private string? _spamhausKey;
+    private string? _spamhausAccount;
     private bool _enableSpfCheck;
     private bool _enableDkimCheck;
     private bool _enableDmarcCheck;
@@ -105,6 +106,7 @@ public class DefaultMessageStore : MessageStore
                 var entity = response.Value;
                 _enableSpamFiltering = entity.GetBoolean("EnableSpamFiltering") ?? false;
                 _spamhausKey = entity.GetString("SpamhausKey");
+                _spamhausAccount = entity.GetString("SpamhausAccount");
                 _enableSpfCheck = entity.GetBoolean("EnableSpfCheck") ?? false;
                 _enableDkimCheck = entity.GetBoolean("EnableDkimCheck") ?? false;
                 _enableDmarcCheck = entity.GetBoolean("EnableDmarcCheck") ?? false;

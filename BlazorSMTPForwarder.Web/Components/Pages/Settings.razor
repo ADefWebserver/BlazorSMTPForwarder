@@ -125,33 +125,6 @@
                 </div>
             </RadzenTabsItem>
 
-            <RadzenTabsItem Text="SendGrid">
-                <div class="p-3">
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <h5 class="card-title">SendGrid Configuration</h5>
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label">API Key</label>
-                                    <input class="form-control" @bind="SendGridApiKey" type="password" />
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label">From Email</label>
-                                    <input class="form-control" @bind="SendGridFromEmail" />
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label">From Name</label>
-                                    <input class="form-control" @bind="SendGridFromName" />
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </RadzenTabsItem>
-
             <RadzenTabsItem Text="Domains">
                 <div class="p-3">
                     <div class="mb-3">
@@ -236,28 +209,27 @@
                                     <div class="input-group">
                                         <input id="spamhausKey" class="form-control" autocomplete="off"
                                                type="@(ShowSpamhausKey ? "text" : "password")"
-                                               placeholder="(not set)" value="@SpamhausKey" readonly
-                                               disabled />
+                                               placeholder="(not set)" @bind-value="SpamhausKey" />
                                         <button class="btn btn-outline-secondary" type="button"
-                                                @onclick="() => ShowSpamhausKey = !ShowSpamhausKey" disabled>
+                                                @onclick="() => ShowSpamhausKey = !ShowSpamhausKey">
                                             @(ShowSpamhausKey ? "Hide" : "Show")
                                         </button>
                                     </div>
                                     <div class="form-text">
-                                        Spamhaus DQS Key (Read-only from Table Storage)
+                                        Spamhaus DQS Key
                                     </div>
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <br />
                                     <label class="form-label">Spamhaus Account</label>
-                                    <input class="form-control" value="@SpamhausAccount" readonly disabled />
+                                    <input class="form-control" @bind-value="SpamhausAccount" />
                                 </div>
 
                                 <div class="col-12">
                                     <div class="d-flex gap-4 mt-2">
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" id="enableSpam"
-                                                   checked="@EnableSpamFiltering" disabled />
+                                                   @bind="EnableSpamFiltering" />
                                             <label class="form-check-label" for="enableSpam">
                                                 Enable Spamhaus
                                                 Filtering
@@ -265,7 +237,7 @@
                                         </div>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" id="enableSpf"
-                                                   checked="@EnableSpfCheck" disabled />
+                                                   @bind="EnableSpfCheck" />
                                             <label class="form-check-label" for="enableSpf">
                                                 Enable SPF
                                                 Check
@@ -273,9 +245,17 @@
                                         </div>
                                         <div class="form-check form-switch">
                                             <input class="form-check-input" type="checkbox" id="enableDkim"
-                                                   checked="@EnableDkimCheck" disabled />
+                                                   @bind="EnableDkimCheck" />
                                             <label class="form-check-label" for="enableDkim">
                                                 Enable DKIM
+                                                Check
+                                            </label>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="enableDmarc"
+                                                   @bind="EnableDmarcCheck" />
+                                            <label class="form-check-label" for="enableDmarc">
+                                                Enable DMARC
                                                 Check
                                             </label>
                                         </div>
@@ -329,6 +309,33 @@
                             <div class="mt-2 text-muted">Loading more...</div>
                         }
                     }
+                </div>
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="SendGrid">
+                <div class="p-3">
+                    <div class="card shadow-sm mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">SendGrid Configuration</h5>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">API Key</label>
+                                    <input class="form-control" @bind="SendGridApiKey" type="password" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">From Email</label>
+                                    <input class="form-control" @bind="SendGridFromEmail" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">From Name</label>
+                                    <input class="form-control" @bind="SendGridFromName" />
+                                </div>
+                                <div class="col-12">
+                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </RadzenTabsItem>
         </Tabs>
@@ -420,7 +427,13 @@
                 { "SendGridApiKey", SendGridApiKey },
                 { "SendGridFromEmail", SendGridFromEmail },
                 { "SendGridFromName", SendGridFromName },
-                { "DomainsJson", JsonSerializer.Serialize(Domains) }
+                { "DomainsJson", JsonSerializer.Serialize(Domains) },
+                { "EnableSpamFiltering", EnableSpamFiltering },
+                { "EnableSpfCheck", EnableSpfCheck },
+                { "EnableDmarcCheck", EnableDmarcCheck },
+                { "EnableDkimCheck", EnableDkimCheck },
+                { "SpamhausKey", SpamhausKey },
+                { "SpamhausAccount", SpamhausAccount }
             };
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
 
