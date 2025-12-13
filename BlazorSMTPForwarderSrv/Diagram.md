@@ -6,49 +6,57 @@ This diagram illustrates the startup and message processing flow of the SMTP For
 sequenceDiagram
     participant Program
     participant HostedService as SmtpServerHostedService
-    participant SmtpLib as SmtpServer (Library)
-    participant Store as DefaultMessageStore
+    participant Zetian as Zetian.Server (SmtpServer)
+    participant Handler as ZetianMessageHandler
     participant Table as Azure Table Storage
     participant Blob as Azure Blob Storage
+    participant SendGrid as SendGrid Relay
     participant Client as External SMTP Client
 
     Note over Program, HostedService: Application Startup
     Program->>HostedService: StartAsync()
-    HostedService->>SmtpLib: Configure (Ports, Name)
-    HostedService->>SmtpLib: StartAsync()
-    activate SmtpLib
+    
+    Note over HostedService, Table: Load Configuration
+    HostedService->>Table: LoadSettingsAsync()
+    Table-->>HostedService: SMTPSettings (spam, relay config)
+    
+    Note over HostedService, Zetian: Configure SMTP Server
+    HostedService->>Zetian: SmtpServerBuilder().ServerName().Port().Build()
+    HostedService->>Zetian: EnableRelay(SendGrid config)
+    HostedService->>Zetian: AddAntiSpam(SPF, DKIM, DMARC, RBL)
+    HostedService->>Zetian: MessageReceived += Handler.HandleMessageAsync
+    HostedService->>Zetian: StartAsync()
+    activate Zetian
 
-    Note over Client, SmtpLib: Email Transmission
-    Client->>SmtpLib: Connect & Send Email
-    SmtpLib->>Store: SaveAsync(context, transaction)
-    activate Store
+    Note over Client, Zetian: Email Transmission
+    Client->>Zetian: Connect & Send Email
+    
+    Note right of Zetian: Anti-Spam Pipeline<br/>(SPF, DKIM, DMARC, RBL checks)
+    
+    Zetian->>Handler: MessageReceived event
+    activate Handler
 
-    Note over Store, Blob: Message Processing
-    Store->>Store: EnsureResourcesAsync()
-    Store->>Blob: Create Container (email-messages) if not exists
-    Store->>Table: Create Table (spamlogs) if not exists
+    Note over Handler, Blob: Message Processing
+    Handler->>Handler: Determine Local vs Remote Recipients
     
-    Store->>Store: RefreshSettingsAsync()
-    Store->>Table: Fetch Settings (SMTPSettings)
+    alt Has Local Recipients
+        Handler->>Blob: CreateIfNotExistsAsync(email-messages)
+        Handler->>Blob: Upload .eml file
+        Handler-->>Handler: Log "Message saved to blob"
+    end
     
-    Note right of Store: Perform Checks (Spamhaus, SPF, DKIM, DMARC)<br/>based on settings
-    
-    alt Is Valid Message
-        Store->>Blob: Upload Email Content
-        opt Relay Enabled
-            Store->>Store: Relay Message (if configured)
-        end
-    else Is Spam/Rejected
-        Store->>Table: Log to 'spamlogs'
+    alt Has Remote Recipients
+        Handler->>Zetian: QueueForRelayAsync(message, RelayPriority.Normal)
+        Zetian->>SendGrid: Relay via configured SmartHost
     end
 
-    Store-->>SmtpLib: Response (OK/Failure)
-    deactivate Store
+    Handler-->>Zetian: Complete
+    deactivate Handler
 
-    SmtpLib-->>Client: SMTP Response (250 OK / Error)
+    Zetian-->>Client: SMTP Response (250 OK / Error)
     
     Note over Program, HostedService: Application Shutdown
     Program->>HostedService: StopAsync()
-    HostedService->>SmtpLib: Shutdown()
-    deactivate SmtpLib
+    HostedService->>Zetian: StopAsync()
+    deactivate Zetian
 ```
