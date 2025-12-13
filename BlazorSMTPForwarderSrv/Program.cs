@@ -2,7 +2,6 @@
 using BlazorSMTPForwarder.ServiceDefaults.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using SmtpServer.Storage;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -16,7 +15,7 @@ builder.AddAzureBlobServiceClient("emailblobs");
 builder.Services.Configure<SmtpServerConfiguration>(builder.Configuration.GetSection("SmtpServer"));
 
 // Register SMTP Services
-builder.Services.AddSingleton<IMessageStore, DefaultMessageStore>();
+builder.Services.AddSingleton<ZetianMessageHandler>();
 builder.Services.AddHostedService<SmtpServerHostedService>();
 
 var host = builder.Build();
