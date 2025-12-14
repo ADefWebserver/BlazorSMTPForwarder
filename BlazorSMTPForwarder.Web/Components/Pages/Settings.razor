@@ -53,27 +53,27 @@
                                     <div class="row g-3">
                                         <div class="col-12 col-md-6">
                                             <label class="form-label">Server Name</label>
-                                            <input class="form-control" value="@ServerName" readonly disabled />
+                                            <input class="form-control" @bind="ServerName" />
                                         </div>
                                         <div class="col-12 col-md-6">
                                             <label class="form-label">Ports</label>
-                                            <input class="form-control" value="@Ports" readonly disabled />
+                                            <input class="form-control" @bind="Ports" />
                                         </div>
                                         <div class="col-12">
                                             <label class="form-label">Allowed Recipient (Primary)</label>
-                                            <input class="form-control" value="@AllowedRecipient" readonly disabled />
+                                            <input class="form-control" @bind="AllowedRecipient" />
                                         </div>
 
                                         <div class="col-12 col-md-6">
                                             <label class="form-label">Auth Username</label>
-                                            <input class="form-control" value="@AllowedUsername" readonly disabled />
+                                            <input class="form-control" @bind="AllowedUsername" />
                                         </div>
                                         <div class="col-12 col-md-6">
                                             <label class="form-label">Auth Password</label>
                                             <div class="input-group">
                                                 <input class="form-control"
                                                        type="@(ShowAllowedPassword ? "text" : "password")"
-                                                       value="@AllowedPassword" readonly disabled />
+                                                       @bind="AllowedPassword" />
                                                 <button class="btn btn-outline-secondary" type="button"
                                                         @onclick="() => ShowAllowedPassword = !ShowAllowedPassword">
                                                     @(ShowAllowedPassword ? "Hide" : "Show")
@@ -105,7 +105,7 @@
                                                     access. (Stored in appsettings.json)
                                                 </div>
                                                 <div class="d-flex align-items-center gap-2">
-                                                    <button type="submit" class="btn btn-primary"
+                                                    <button type="submit" class="btn btn-success"
                                                             disabled="@(Saving || IsLoading)">
                                                         @if (Saving)
                                                         {
@@ -192,7 +192,7 @@
                     }
 
                     <div class="mt-3">
-                        <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                        <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
                     </div>
                 </div>
             </RadzenTabsItem>
@@ -261,6 +261,9 @@
                                         </div>
                                     </div>
                                 </div>
+                                <div class="col-12">
+                                    <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -328,10 +331,10 @@
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <label class="form-label">From Name</label>
-                                    <input class="form-control" @bind="SendGridFromName" />
+                                    <input class="form-contsuccessind="SendGridFromName" />
                                 </div>
                                 <div class="col-12">
-                                    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                    <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
                                 </div>
                             </div>
                         </div>
@@ -424,6 +427,11 @@
 
             var entity = new TableEntity(PK, RKSettings)
             {
+                { "ServerName", ServerName },
+                { "Ports", Ports },
+                { "AllowedRecipient", AllowedRecipient },
+                { "AllowedUsername", AllowedUsername },
+                { "AllowedPassword", AllowedPassword },
                 { "SendGridApiKey", SendGridApiKey },
                 { "SendGridFromEmail", SendGridFromEmail },
                 { "SendGridFromName", SendGridFromName },
@@ -514,7 +522,8 @@
             }
             else
             {
-                await DialogService.Alert($"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {ServerName}", "DNS Check");
+                var expected = string.IsNullOrWhiteSpace(ServerName) ? "[Local Domain not set]" : ServerName;
+                await DialogService.Alert($"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {expected}", "DNS Check");
             }
         }
         catch (Exception ex)

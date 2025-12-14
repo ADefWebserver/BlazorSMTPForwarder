@@ -16,7 +16,6 @@ builder.AddAzureBlobServiceClient("emailblobs");
 
 // Add application services
 builder.Services.AddScoped<BlobEmailService>();
-builder.Services.AddScoped<SmtpTestClient>();
 builder.Services.AddScoped<LoginService>();
 builder.Services.AddScoped<AuthenticationStateProvider, CustomAuthenticationStateProvider>();
 builder.Services.AddCascadingAuthenticationState();
