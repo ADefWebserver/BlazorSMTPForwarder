@@ -59,10 +59,6 @@
                                             <label class="form-label">Ports</label>
                                             <input class="form-control" @bind="Ports" />
                                         </div>
-                                        <div class="col-12">
-                                            <label class="form-label">Allowed Recipient (Primary)</label>
-                                            <input class="form-control" @bind="AllowedRecipient" />
-                                        </div>
 
                                         <div class="col-12 col-md-6">
                                             <label class="form-label">Auth Username</label>
@@ -86,11 +82,10 @@
 
                             <div class="card shadow-sm mb-4">
                                 <div class="card-body">
-                                    <h5 class="card-title">Application Security</h5>
                                     <form @onsubmit="SaveAsync">
                                         <div class="row g-3">
                                             <div class="col-12">
-                                                <label class="form-label" for="appPassword">App Access Password</label>
+                                                <label class="form-label" for="appPassword">Website App Access Password</label>
                                                 <div class="input-group">
                                                     <input id="appPassword" class="form-control"
                                                            type="@(ShowAppPassword ? "text" : "password")"
@@ -219,11 +214,6 @@
                                         Spamhaus DQS Key
                                     </div>
                                 </div>
-                                <div class="col-12 col-md-6">
-                                    <br />
-                                    <label class="form-label">Spamhaus Account</label>
-                                    <input class="form-control" @bind-value="SpamhausAccount" />
-                                </div>
 
                                 <div class="col-12">
                                     <div class="d-flex gap-4 mt-2">
@@ -331,7 +321,7 @@
                                 </div>
                                 <div class="col-12 col-md-6">
                                     <label class="form-label">From Name</label>
-                                    <input class="form-contsuccessind="SendGridFromName" />
+                                    <input class="form-control" @bind="SendGridFromName" />
                                 </div>
                                 <div class="col-12">
                                     <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
@@ -350,8 +340,8 @@
     const string PK = "SmtpServer";
     const string RKSettings = "Current";
 
-    string? ServerName; string? Ports; string? AllowedRecipient; string? AllowedUsername; string? AllowedPassword; string?
-    AppPassword; string? SpamhausKey; string? SpamhausAccount;
+    string? ServerName; string? Ports; string? AllowedUsername; string? AllowedPassword; string?
+    AppPassword; string? SpamhausKey;
     string? SendGridApiKey; string? SendGridFromEmail; string? SendGridFromName;
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
@@ -385,13 +375,10 @@
             {
                 ServerName = settings.Value?.GetString("ServerName");
                 Ports = settings.Value?.GetString("Ports");
-                AllowedRecipient = settings.Value?.GetString("AllowedRecipient");
                 AllowedUsername = settings.Value?.GetString("AllowedUsername");
                 AllowedPassword = settings.Value?.GetString("AllowedPassword");
 
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
-
-                SpamhausAccount = settings.Value?.GetString("SpamhausAccount");
 
                 SendGridApiKey = settings.Value?.GetString("SendGridApiKey");
                 SendGridFromEmail = settings.Value?.GetString("SendGridFromEmail");
@@ -429,7 +416,6 @@
             {
                 { "ServerName", ServerName },
                 { "Ports", Ports },
-                { "AllowedRecipient", AllowedRecipient },
                 { "AllowedUsername", AllowedUsername },
                 { "AllowedPassword", AllowedPassword },
                 { "SendGridApiKey", SendGridApiKey },
@@ -440,8 +426,7 @@
                 { "EnableSpfCheck", EnableSpfCheck },
                 { "EnableDmarcCheck", EnableDmarcCheck },
                 { "EnableDkimCheck", EnableDkimCheck },
-                { "SpamhausKey", SpamhausKey },
-                { "SpamhausAccount", SpamhausAccount }
+                { "SpamhausKey", SpamhausKey }
             };
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
 

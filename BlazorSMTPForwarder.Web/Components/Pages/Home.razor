@@ -115,7 +115,6 @@
 
     // SMTP settings from table
     private string? _settingsError;
-    private string? _allowedRecipient;
 
     private string? _currentBody;
     private bool _isHtmlBody;
@@ -149,10 +148,7 @@
             var table = TableServiceClient.GetTableClient("SMTPSettings");
             await table.CreateIfNotExistsAsync();
             var response = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current");
-            if (response.HasValue)
-            {
-                _allowedRecipient = response.Value?.GetString("AllowedRecipient");
-            }
+            // Settings loaded successfully
         }
         catch (Exception ex)
         {
@@ -164,12 +160,8 @@
     {
         _recipientFolders = (await EmailService.GetRecipientFoldersAsync()).ToList();
         
-        // If we have an allowed recipient, try to select it automatically if present
-        if (!string.IsNullOrEmpty(_allowedRecipient) && _recipientFolders.Contains(_allowedRecipient))
-        {
-            _selectedRecipient = _allowedRecipient;
-        }
-        else if (_recipientFolders.Any() && string.IsNullOrEmpty(_selectedRecipient))
+        // Select first folder if none selected
+        if (_recipientFolders.Any() && string.IsNullOrEmpty(_selectedRecipient))
         {
             _selectedRecipient = _recipientFolders.First();
         }
@@ -372,7 +364,7 @@
     {
         await DialogService.OpenAsync<ComposeEmailDialog>("New Message",
                new Dictionary<string, object>() {
-                   { "DefaultFrom", _allowedRecipient ?? "" }
+                   { "DefaultFrom", _selectedRecipient ?? "" }
                },
                new DialogOptions() { Width = "700px", Height = "620px", Resizable = true, Draggable = true });
         
@@ -422,7 +414,7 @@
 
         // Use MimeKit to parse email addresses properly
         var (fromAddress, fromDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "From", _currentEmail.Metadata.From);
-        var (toAddress, toDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "To", _allowedRecipient ?? _currentEmail.Metadata.RecipientUser + "@example.com");
+        var (toAddress, toDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "To", _selectedRecipient ?? _currentEmail.Metadata.RecipientUser + "@example.com");
         
         var originalSubject = _currentEmail.Metadata.Subject;
         var subject = !string.IsNullOrWhiteSpace(originalSubject) && !originalSubject.StartsWith("re:", StringComparison.OrdinalIgnoreCase)
