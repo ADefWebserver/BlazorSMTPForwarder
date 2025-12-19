@@ -54,7 +54,6 @@
     [Inject] public NotificationService NotificationService { get; set; } = default!;
     [Inject] public TableServiceClient TableServiceClient { get; set; } = default!;
     [Inject] public NavigationManager Nav { get; set; } = default!;
-    [Inject] public IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
     private class ComposeModel
     {
@@ -118,25 +117,7 @@
 
     private string ResolveSmtpHost()
     {
-        // Prefer server local IP from HttpContext if available
-        var ctx = HttpContextAccessor.HttpContext;
-        var localIp = ctx?.Connection.LocalIpAddress?.ToString();
-
-        if (!string.IsNullOrWhiteSpace(localIp))
-        {
-            if (localIp == "::1")
-            {
-                return "localhost";
-            }
-            else
-            {
-                return localIp;
-            }
-        }
-
-        // Fallback to host from NavigationManager (hostname part only)
-        var uri = new Uri(Nav.Uri);
-        return uri.Host;
+        return "127.0.0.1";
     }
 
     private async Task<int> GetFirstPortAsync()
@@ -170,7 +151,7 @@
         {
             _settingsError = $"Warning: Could not read SMTP port from table storage, falling back to 2525. {ex.Message}";
         }
-        return 2525; // fallback development port
+        return 25; // fallback development port
     }
 
     private async Task<(string? Username, string? Password)> GetCredentialsAsync()
