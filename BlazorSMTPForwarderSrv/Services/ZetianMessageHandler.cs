@@ -16,23 +16,17 @@ namespace BlazorSMTPForwarderSrv.Services;
 public class ZetianMessageHandler
 {
     private readonly ILogger<ZetianMessageHandler> _logger;
-    private readonly SmtpServerConfiguration _configuration;
+    private readonly SmtpServerConfiguration _smtpServerConfiguration;
     private readonly BlobServiceClient _blobServiceClient;
-    private readonly TableServiceClient _tableServiceClient;
-    private readonly IConfiguration _appConfig;
 
     public ZetianMessageHandler(
         ILogger<ZetianMessageHandler> logger,
-        IOptions<SmtpServerConfiguration> configuration,
-        BlobServiceClient blobServiceClient,
-        TableServiceClient tableServiceClient,
-        IConfiguration appConfig)
+        SmtpServerConfiguration smtpServerConfiguration,
+        BlobServiceClient blobServiceClient)
     {
         _logger = logger;
-        _configuration = configuration.Value;
+        _smtpServerConfiguration = smtpServerConfiguration;
         _blobServiceClient = blobServiceClient;
-        _tableServiceClient = tableServiceClient;
-        _appConfig = appConfig;
     }
 
     public async Task HandleMessageAsync(object sender, MessageEventArgs e)
@@ -42,7 +36,7 @@ public class ZetianMessageHandler
 
         var message = e.Message;
         var session = e.Session;
-        
+
         _logger.LogInformation("Received message from {From} to {Recipients}", message.From, string.Join(", ", message.Recipients));
 
         bool hasLocal = message.Recipients.Any(r => IsLocalRecipient(r.Address));
@@ -54,19 +48,19 @@ public class ZetianMessageHandler
             // Use Zetian's AzureBlobMessageStore if possible, or manual upload.
             // Since we have BlobServiceClient injected, we can use it directly to ensure it works with Aspire.
             // Zetian's AzureBlobMessageStore might require a connection string which we might not have in raw form if using Managed Identity.
-            
-            try 
+
+            try
             {
                 var container = _blobServiceClient.GetBlobContainerClient("email-messages");
                 await container.CreateIfNotExistsAsync();
-                
+
                 var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
                 var blobClient = container.GetBlobClient(fileName);
-                
+
                 using var stream = new MemoryStream();
                 await message.SaveToStreamAsync(stream);
                 stream.Position = 0;
-                
+
                 await blobClient.UploadAsync(stream);
                 _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
             }
@@ -85,7 +79,9 @@ public class ZetianMessageHandler
 
     private bool IsLocalRecipient(string address)
     {
-        if (string.IsNullOrWhiteSpace(_configuration.Domain)) return true;
-        return address.EndsWith("@" + _configuration.Domain, StringComparison.OrdinalIgnoreCase);
+        var Settings = _smtpServerConfiguration.LoadSettingsAsync().GetAwaiter().GetResult();
+
+        if (string.IsNullOrWhiteSpace(Settings.ServerName)) return true;
+        return address.EndsWith("@" + Settings.ServerName, StringComparison.OrdinalIgnoreCase);
     }
 }

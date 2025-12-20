@@ -15,21 +15,21 @@ public class SmtpServerHostedService : IHostedService, IDisposable
 {
     private SmtpServer? _smtpServer;
     private readonly ILogger<SmtpServerHostedService> _logger;
-    private readonly SmtpServerConfiguration _config;
     private readonly TableServiceClient _tableServiceClient;
     private readonly ZetianMessageHandler _messageHandler;
+    private readonly SmtpServerConfiguration _smtpServerConfiguration;
 
     public SmtpServerHostedService(
-        IOptions<SmtpServerConfiguration> configuration,
         IServiceProvider serviceProvider,
         ILogger<SmtpServerHostedService> logger,
         TableServiceClient tableServiceClient,
-        ZetianMessageHandler messageHandler)
+        ZetianMessageHandler messageHandler,
+        SmtpServerConfiguration smtpServerConfiguration)
     {
         _logger = logger;
-        _config = configuration.Value;
         _tableServiceClient = tableServiceClient;
         _messageHandler = messageHandler;
+        _smtpServerConfiguration = smtpServerConfiguration;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -37,13 +37,12 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         _logger.LogInformation("Configuring SMTP Server...");
 
         // 1. Load Settings from Azure Table
-        var settings = await LoadSettingsAsync(cancellationToken);
+        var settings = await _smtpServerConfiguration.LoadSettingsAsync(cancellationToken);
 
         // 2. Build Server
-        var ports = _config.Ports ?? new[] { 25, 587, 2525 };
         var builder = new SmtpServerBuilder()
-            .ServerName(_config.ServerName ?? "localhost")
-            .Port(ports.Length > 0 ? ports[0] : 25);
+            .ServerName(settings.ServerName)
+            .Port(settings.ServerPorts[0]);
 
         _smtpServer = builder.Build();
 
@@ -99,84 +98,5 @@ public class SmtpServerHostedService : IHostedService, IDisposable
     public void Dispose()
     {
         _smtpServer?.Dispose();
-    }
-
-    private async Task<SmtpSettingsModel> LoadSettingsAsync(CancellationToken cancellationToken)
-    {
-        var model = new SmtpSettingsModel();
-        try
-        {
-            var table = _tableServiceClient.GetTableClient("SMTPSettings");
-            await table.CreateIfNotExistsAsync(cancellationToken);
-            var response = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: cancellationToken);
-
-            TableEntity entity;
-            bool needsUpdate = false;
-
-            if (!response.HasValue)
-            {
-                entity = new TableEntity("SmtpServer", "Current");
-                needsUpdate = true;
-            }
-            else
-            {
-                entity = response.Value;
-            }
-
-            // Helper to ensure property exists
-            void EnsureProperty<T>(string key, T defaultValue)
-            {
-                if (!entity.ContainsKey(key))
-                {
-                    entity[key] = defaultValue;
-                    needsUpdate = true;
-                }
-            }
-
-            EnsureProperty("EnableSpamFiltering", false);
-            EnsureProperty("SpamhausKey", "");
-            EnsureProperty("EnableSpfCheck", false);
-            EnsureProperty("EnableDkimCheck", false);
-            EnsureProperty("EnableDmarcCheck", false);
-            EnsureProperty("SendGridHost", "");
-            EnsureProperty("SendGridPort", 587);
-            EnsureProperty("SendGridUser", "");
-            EnsureProperty("SendGridPass", "");
-
-            if (needsUpdate)
-            {
-                await table.UpsertEntityAsync(entity, TableUpdateMode.Merge, cancellationToken);
-                _logger.LogInformation("Initialized or updated SMTPSettings table with default values.");
-            }
-
-            model.EnableSpamFiltering = entity.GetBoolean("EnableSpamFiltering") ?? false;
-            model.SpamhausKey = entity.GetString("SpamhausKey");
-            model.EnableSpfCheck = entity.GetBoolean("EnableSpfCheck") ?? false;
-            model.EnableDkimCheck = entity.GetBoolean("EnableDkimCheck") ?? false;
-            model.EnableDmarcCheck = entity.GetBoolean("EnableDmarcCheck") ?? false;
-            
-            model.SendGridHost = entity.GetString("SendGridHost");
-            model.SendGridPort = entity.GetInt32("SendGridPort") ?? 587;
-            model.SendGridUser = entity.GetString("SendGridUser");
-            model.SendGridPass = entity.GetString("SendGridPass");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to load settings from Azure Table. Using defaults.");
-        }
-        return model;
-    }
-
-    private class SmtpSettingsModel
-    {
-        public bool EnableSpamFiltering { get; set; }
-        public string? SpamhausKey { get; set; }
-        public bool EnableSpfCheck { get; set; }
-        public bool EnableDkimCheck { get; set; }
-        public bool EnableDmarcCheck { get; set; }
-        public string? SendGridHost { get; set; }
-        public int SendGridPort { get; set; }
-        public string? SendGridUser { get; set; }
-        public string? SendGridPass { get; set; }
-    }
+    }        
 }
