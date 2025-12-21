@@ -32,12 +32,45 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         _smtpServerConfiguration = smtpServerConfiguration;
     }
 
-    public async Task StartAsync(CancellationToken cancellationToken)
+    private Task? _executeTask;
+    private CancellationTokenSource? _stopCts;
+    private DateTimeOffset _lastRestartRequested = DateTimeOffset.MinValue;
+
+
+    public Task StartAsync(CancellationToken cancellationToken)
+    {
+        _stopCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _executeTask = Task.Run(() => ExecuteServerLoopAsync(_stopCts.Token), cancellationToken);
+        return Task.CompletedTask;
+    }
+
+    private async Task ExecuteServerLoopAsync(CancellationToken stoppingToken)
+    {
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            try
+            {
+                await RunServerInstanceAsync(stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Normal shutdown
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in SMTP Server loop. Restarting in 5 seconds...");
+                await Task.Delay(5000, stoppingToken);
+            }
+        }
+    }
+
+    private async Task RunServerInstanceAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Configuring SMTP Server...");
 
         // 1. Load Settings from Azure Table
-        var settings = await _smtpServerConfiguration.LoadSettingsAsync(cancellationToken);
+        var settings = await _smtpServerConfiguration.LoadSettingsAsync(stoppingToken);
 
         // 2. Build Server
         var builder = new SmtpServerBuilder()
@@ -83,20 +116,91 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         _smtpServer.MessageReceived += async (s, e) => await _messageHandler.HandleMessageAsync(s, e);
 
         _logger.LogInformation("Starting SMTP Server...");
-        await _smtpServer.StartAsync(cancellationToken);
+        
+        // Start the server in a separate task because StartAsync blocks
+        var serverTask = _smtpServer.StartAsync(stoppingToken);
+
+        // Wait for restart signal or cancellation
+        await WaitForRestartSignal(stoppingToken);
+
+        _logger.LogInformation("Stopping SMTP Server instance...");
+        await _smtpServer.StopAsync();
+        
+        try
+        {
+            await serverTask;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error stopping SMTP server");
+        }
+        finally
+        {
+            _smtpServer.Dispose();
+            _smtpServer = null;
+        }
+    }
+
+    private async Task WaitForRestartSignal(CancellationToken stoppingToken)
+    {
+        var table = _tableServiceClient.GetTableClient("SMTPSettings");
+        
+        // Initialize last restart requested time if needed
+        if (_lastRestartRequested == DateTimeOffset.MinValue)
+        {
+             var entity = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: stoppingToken);
+             if (entity.HasValue && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset dt)
+             {
+                 _lastRestartRequested = dt;
+             }
+             else
+             {
+                 _lastRestartRequested = DateTimeOffset.UtcNow;
+             }
+        }
+
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await Task.Delay(5000, stoppingToken);
+
+            try 
+            {
+                var entity = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: stoppingToken);
+                if (entity.HasValue && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset requestedAt)
+                {
+                    if (requestedAt > _lastRestartRequested)
+                    {
+                        _lastRestartRequested = requestedAt;
+                        _logger.LogInformation("Restart signal received. Reloading configuration...");
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to check for restart signal");
+            }
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
-        _logger.LogInformation("Stopping SMTP Server...");
-        if (_smtpServer != null)
+        _logger.LogInformation("Stopping SMTP Server Service...");
+        if (_stopCts != null)
         {
-            await _smtpServer.StopAsync();
+            _stopCts.Cancel();
+        }
+
+        if (_executeTask != null)
+        {
+            await Task.WhenAny(_executeTask, Task.Delay(Timeout.Infinite, cancellationToken));
         }
     }
 
     public void Dispose()
     {
         _smtpServer?.Dispose();
+        _stopCts?.Dispose();
     }        
 }
