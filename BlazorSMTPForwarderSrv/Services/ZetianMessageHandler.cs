@@ -92,11 +92,14 @@ public class ZetianMessageHandler
                                 var domainConfig = domains.FirstOrDefault(d => recipient.Address.EndsWith("@" + d.DomainName, StringComparison.OrdinalIgnoreCase));
                                 if (domainConfig != null)
                                 {
-                                    var rule = domainConfig.ForwardingRules.FirstOrDefault(r => r.IncomingEmail.Equals(recipient.Address, StringComparison.OrdinalIgnoreCase));
-                                    if (rule != null)
+                                    if (domainConfig.CatchAll.Type == CatchAllType.None)
                                     {
-                                        _logger.LogInformation("Forwarding message for {Recipient} to {Destination}", recipient.Address, rule.DestinationEmail);
-                                        await ForwardMessageAsync(sendGridClient, mimeMessage, rule.DestinationEmail);
+                                        var rule = domainConfig.ForwardingRules.FirstOrDefault(r => r.IncomingEmail.Equals(recipient.Address, StringComparison.OrdinalIgnoreCase));
+                                        if (rule != null)
+                                        {
+                                            _logger.LogInformation("Forwarding message for {Recipient} to {Destination}", recipient.Address, rule.DestinationEmail);
+                                            await ForwardMessageAsync(sendGridClient, mimeMessage, rule.DestinationEmail);
+                                        }
                                     }
                                     else if (domainConfig.CatchAll.Type == CatchAllType.Forward && !string.IsNullOrEmpty(domainConfig.CatchAll.ForwardToEmail))
                                     {

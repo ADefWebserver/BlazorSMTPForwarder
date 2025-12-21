@@ -122,6 +122,7 @@
                                         <h6>Catch-All Action</h6>
                                         <div class="input-group mb-2">
                                             <select class="form-select" @bind="domain.CatchAll.Type">
+                                                <option value="@CatchAllType.None">[None]</option>
                                                 <option value="@CatchAllType.Reject">Reject</option>
                                                 <option value="@CatchAllType.Delete">Delete</option>
                                                 <option value="@CatchAllType.Forward">Forward</option>
@@ -133,6 +134,8 @@
                                         </div>
                                     </div>
 
+                                    @if (domain.CatchAll.Type == CatchAllType.None)
+                                    {
                                     <div class="col-12">
                                         <h6>Forwarding Rules</h6>
                                         <table class="table table-sm">
@@ -156,6 +159,7 @@
                                         </table>
                                         <RadzenButton Text="Add Rule" Size="ButtonSize.Small" Click="@(() => domain.ForwardingRules.Add(new EmailForwardingRule()))" />
                                     </div>
+                                    }
                                 </div>
                             </div>
                         </div>

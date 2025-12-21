@@ -17,13 +17,14 @@ public class EmailForwardingRule
 
 public class CatchAllAction
 {
-    public CatchAllType Type { get; set; } = CatchAllType.Reject;
+    public CatchAllType Type { get; set; } = CatchAllType.None;
     public string? ForwardToEmail { get; set; }
 }
 
 public enum CatchAllType
 {
-    Reject,
-    Delete,
-    Forward
+    Reject = 0,
+    Delete = 1,
+    Forward = 2,
+    None = 3
 }
