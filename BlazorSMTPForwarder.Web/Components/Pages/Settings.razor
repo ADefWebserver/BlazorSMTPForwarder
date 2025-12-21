@@ -56,23 +56,6 @@
                                             <label class="form-label">Ports</label>
                                             <input class="form-control" @bind="Ports" />
                                         </div>
-
-                                        <div class="col-12 col-md-6">
-                                            <label class="form-label">Auth Username</label>
-                                            <input class="form-control" @bind="AllowedUsername" />
-                                        </div>
-                                        <div class="col-12 col-md-6">
-                                            <label class="form-label">Auth Password</label>
-                                            <div class="input-group">
-                                                <input class="form-control"
-                                                       type="@(ShowAllowedPassword ? "text" : "password")"
-                                                       @bind="AllowedPassword" />
-                                                <button class="btn btn-outline-secondary" type="button"
-                                                        @onclick="() => ShowAllowedPassword = !ShowAllowedPassword">
-                                                    @(ShowAllowedPassword ? "Hide" : "Show")
-                                                </button>
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -323,13 +306,12 @@
     const string PK = "SmtpServer";
     const string RKSettings = "Current";
 
-    string? ServerName; string? Ports; string? AllowedUsername; string? AllowedPassword; string?
-    AppPassword; string? SpamhausKey;
+    string? ServerName; string? Ports; string? AppPassword; string? SpamhausKey;
     string? SendGridApiKey; 
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
-    bool IsLoading; bool Saving; bool ShowAllowedPassword; bool ShowSpamhausKey; bool ShowAppPassword;
+    bool IsLoading; bool Saving; bool ShowSpamhausKey; bool ShowAppPassword;
 
     bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck;
 
@@ -358,8 +340,6 @@
             {
                 ServerName = settings.Value?.GetString("ServerName");
                 Ports = settings.Value?.GetString("ServerPorts");
-                AllowedUsername = settings.Value?.GetString("AllowedUsername");
-                AllowedPassword = settings.Value?.GetString("AllowedPassword");
 
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
 
@@ -397,8 +377,6 @@
             {
                 { "ServerName", ServerName },
                 { "Ports", Ports },
-                { "AllowedUsername", AllowedUsername },
-                { "AllowedPassword", AllowedPassword },
                 { "SendGridApiKey", SendGridApiKey },
                 { "DomainsJson", JsonSerializer.Serialize(Domains) },
                 { "EnableSpamFiltering", EnableSpamFiltering },

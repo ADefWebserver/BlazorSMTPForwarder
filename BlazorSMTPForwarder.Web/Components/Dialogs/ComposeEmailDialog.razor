@@ -154,38 +154,6 @@
         return 25; // fallback development port
     }
 
-    private async Task<(string? Username, string? Password)> GetCredentialsAsync()
-    {
-        const string SettingsTableName = "SMTPSettings";
-        const string PartitionKey = "SmtpServer";
-        const string RowKey = "Current";
-        try
-        {
-            var table = TableServiceClient.GetTableClient(SettingsTableName);
-            var entityResponse = await table.GetEntityAsync<TableEntity>(PartitionKey, RowKey);
-            var entity = entityResponse.Value;
-
-            string? username = null;
-            string? password = null;
-
-            if (entity.TryGetValue("AllowedUsername", out var userObj))
-            {
-                username = userObj?.ToString();
-            }
-            if (entity.TryGetValue("AllowedPassword", out var passObj))
-            {
-                password = passObj?.ToString();
-            }
-
-            return (username, password);
-        }
-        catch (Exception ex)
-        {
-            _settingsError = $"Warning: Could not read SMTP credentials from table storage. {ex.Message}";
-            return (null, null);
-        }
-    }
-
     private async Task SendAsync()
     {
         if (string.IsNullOrWhiteSpace(_model.To))
@@ -202,18 +170,12 @@
             // Resolve host, port and credentials from Table Storage similar to SmtpTest
             var smtpHost = ResolveSmtpHost();
             var port = await GetFirstPortAsync();
-            var (username, password) = await GetCredentialsAsync();
 
             using var client = new SmtpClient(smtpHost, port)
             {
                 EnableSsl = false,
                 Timeout = 50000
             };
-
-            if (!string.IsNullOrWhiteSpace(username) && !string.IsNullOrWhiteSpace(password))
-            {
-                client.Credentials = new NetworkCredential(username, password);
-            }
 
             var message = new MailMessage
             {

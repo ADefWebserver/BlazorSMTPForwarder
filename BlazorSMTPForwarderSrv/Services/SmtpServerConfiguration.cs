@@ -85,6 +85,7 @@ public class SmtpServerConfiguration
             {
                 model.ServerPorts = new int[] { 25 };
             }
+
             model.EnableSpamFiltering = entity.GetBoolean("EnableSpamFiltering") ?? false;
             model.SpamhausKey = entity.GetString("SpamhausKey");
             model.EnableSpfCheck = entity.GetBoolean("EnableSpfCheck") ?? false;
