@@ -1,15 +1,23 @@
+using Azure.Data.Tables;
+using Azure.Storage.Blobs;
 using BlazorSMTPForwarder.ServiceDefaults.Models;
+using BlazorSMTPForwarderSrv.Models;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net;
+using System.Text.Json;
+using SendGrid;
+using SendGrid.Helpers.Mail;
+using MimeKit;
+using Zetian.Abstractions;
+using Zetian.Models.EventArgs;
+using Zetian.Relay.Configuration;
+using Zetian.Relay.Enums;
+using Zetian.Relay.Extensions;
 using Zetian.Server;
 using Zetian.Storage.AzureBlob;
 using Zetian.Storage.AzureBlob.Configuration;
-using Zetian.Relay.Extensions;
-using Zetian.Relay.Enums;
-using Azure.Storage.Blobs;
-using Azure.Data.Tables;
-using Zetian.Models.EventArgs;
-using Microsoft.Extensions.Configuration;
 
 namespace BlazorSMTPForwarderSrv.Services;
 
@@ -18,6 +26,7 @@ public class ZetianMessageHandler
     private readonly ILogger<ZetianMessageHandler> _logger;
     private readonly SmtpServerConfiguration _smtpServerConfiguration;
     private readonly BlobServiceClient _blobServiceClient;
+    private SmtpSettingsModel _smtpServer = new SmtpSettingsModel();
 
     public ZetianMessageHandler(
         ILogger<ZetianMessageHandler> logger,
@@ -31,6 +40,8 @@ public class ZetianMessageHandler
 
     public async Task HandleMessageAsync(object sender, MessageEventArgs e)
     {
+        _smtpServer = _smtpServerConfiguration.LoadSettingsAsync().GetAwaiter().GetResult();
+
         var server = sender as SmtpServer;
         if (server == null) return;
 
@@ -40,15 +51,9 @@ public class ZetianMessageHandler
         _logger.LogInformation("Received message from {From} to {Recipients}", message.From, string.Join(", ", message.Recipients));
 
         bool hasLocal = message.Recipients.Any(r => IsLocalRecipient(r.Address));
-        bool hasRemote = message.Recipients.Any(r => !IsLocalRecipient(r.Address));
 
         if (hasLocal)
         {
-            _logger.LogInformation("Storing message locally.");
-            // Use Zetian's AzureBlobMessageStore if possible, or manual upload.
-            // Since we have BlobServiceClient injected, we can use it directly to ensure it works with Aspire.
-            // Zetian's AzureBlobMessageStore might require a connection string which we might not have in raw form if using Managed Identity.
-
             try
             {
                 var container = _blobServiceClient.GetBlobContainerClient("email-messages");
@@ -63,25 +68,103 @@ public class ZetianMessageHandler
 
                 await blobClient.UploadAsync(stream);
                 _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
+
+                if (!string.IsNullOrEmpty(_smtpServer.SendGridApiKey) && !string.IsNullOrEmpty(_smtpServer.DomainsJson))
+                {
+                    try 
+                    {
+                        var domains = JsonSerializer.Deserialize<List<DomainConfiguration>>(_smtpServer.DomainsJson);
+                        if (domains != null)
+                        {
+                            var sendGridClient = new SendGridClient(_smtpServer.SendGridApiKey);
+                            
+                            // Parse the message once
+                            using var msgStream = new MemoryStream();
+                            await message.SaveToStreamAsync(msgStream);
+                            msgStream.Position = 0;
+                            var mimeMessage = await MimeMessage.LoadAsync(msgStream);
+
+                            foreach (var recipient in message.Recipients)
+                            {
+                                var domainConfig = domains.FirstOrDefault(d => recipient.Address.EndsWith("@" + d.DomainName, StringComparison.OrdinalIgnoreCase));
+                                if (domainConfig != null)
+                                {
+                                    var rule = domainConfig.ForwardingRules.FirstOrDefault(r => r.IncomingEmail.Equals(recipient.Address, StringComparison.OrdinalIgnoreCase));
+                                    if (rule != null)
+                                    {
+                                        _logger.LogInformation("Forwarding message for {Recipient} to {Destination}", recipient.Address, rule.DestinationEmail);
+                                        await ForwardMessageAsync(sendGridClient, mimeMessage, rule.DestinationEmail);
+                                    }
+                                    else if (domainConfig.CatchAll.Type == CatchAllType.Forward && !string.IsNullOrEmpty(domainConfig.CatchAll.ForwardToEmail))
+                                    {
+                                         _logger.LogInformation("Catch-all forwarding message for {Recipient} to {Destination}", recipient.Address, domainConfig.CatchAll.ForwardToEmail);
+                                         await ForwardMessageAsync(sendGridClient, mimeMessage, domainConfig.CatchAll.ForwardToEmail);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error forwarding message via SendGrid");
+                    }
+                }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to save message to blob storage.");
             }
         }
-
-        if (hasRemote)
-        {
-            _logger.LogInformation("Relaying message.");
-            await server.QueueForRelayAsync(message, session, RelayPriority.Normal);
-        }
     }
 
     private bool IsLocalRecipient(string address)
     {
-        var Settings = _smtpServerConfiguration.LoadSettingsAsync().GetAwaiter().GetResult();
+        if (string.IsNullOrWhiteSpace(_smtpServer.ServerName)) return true;
+        return address.EndsWith("@" + _smtpServer.ServerName, StringComparison.OrdinalIgnoreCase);
+    }
 
-        if (string.IsNullOrWhiteSpace(Settings.ServerName)) return true;
-        return address.EndsWith("@" + Settings.ServerName, StringComparison.OrdinalIgnoreCase);
+    private async Task ForwardMessageAsync(SendGridClient client, MimeMessage originalMessage, string destination)
+    {
+        var fromEmail = new EmailAddress("noreply@" + _smtpServer.ServerName, "Forwarder");
+        var toEmail = new EmailAddress(destination);
+        var subject = (originalMessage.Subject ?? "No Subject");
+        var plainTextContent = originalMessage.TextBody ?? "No text content";
+        var htmlContent = originalMessage.HtmlBody ?? originalMessage.TextBody ?? "No content";
+
+        var msg = MailHelper.CreateSingleEmail(fromEmail, toEmail, subject, plainTextContent, htmlContent);
+        
+        // Set Reply-To to original sender
+        if (originalMessage.From.Count > 0)
+        {
+            var originalSender = originalMessage.From.Mailboxes.FirstOrDefault();
+            if (originalSender != null)
+            {
+                msg.ReplyTo = new EmailAddress(originalSender.Address, originalSender.Name);
+            }
+        }
+
+        // Attachments
+        foreach (var attachment in originalMessage.Attachments)
+        {
+            if (attachment is MimePart part)
+            {
+                using var stream = new MemoryStream();
+                await part.Content.DecodeToAsync(stream);
+                var content = Convert.ToBase64String(stream.ToArray());
+                msg.AddAttachment(part.FileName, content, part.ContentType.MimeType);
+            }
+        }
+
+        var response = await client.SendEmailAsync(msg);
+        if (response.StatusCode != HttpStatusCode.Accepted && response.StatusCode != HttpStatusCode.OK)
+        {
+             _logger.LogError("SendGrid failed with status code {StatusCode}", response.StatusCode);
+             var body = await response.Body.ReadAsStringAsync();
+             _logger.LogError("SendGrid response: {Response}", body);
+        }
+        else
+        {
+            _logger.LogInformation("Forwarded successfully to {Destination}", destination);
+        }
     }
 }

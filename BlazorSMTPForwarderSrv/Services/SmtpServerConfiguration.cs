@@ -35,6 +35,7 @@ public class SmtpServerConfiguration
             var response = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: cancellationToken);
 
             TableEntity entity;
+
             bool needsUpdate = false;
 
             if (!response.HasValue)
@@ -63,10 +64,7 @@ public class SmtpServerConfiguration
             EnsureProperty("EnableSpfCheck", false);
             EnsureProperty("EnableDkimCheck", false);
             EnsureProperty("EnableDmarcCheck", false);
-            EnsureProperty("SendGridHost", "");
-            EnsureProperty("SendGridPort", 587);
-            EnsureProperty("SendGridUser", "");
-            EnsureProperty("SendGridPass", "");
+            EnsureProperty("SendGridApiKey", "");
 
             // Update the table if new properties were added
             if (needsUpdate)
@@ -92,10 +90,8 @@ public class SmtpServerConfiguration
             model.EnableDkimCheck = entity.GetBoolean("EnableDkimCheck") ?? false;
             model.EnableDmarcCheck = entity.GetBoolean("EnableDmarcCheck") ?? false;
 
-            model.SendGridHost = entity.GetString("SendGridHost");
-            model.SendGridPort = entity.GetInt32("SendGridPort") ?? 587;
-            model.SendGridUser = entity.GetString("SendGridUser");
-            model.SendGridPass = entity.GetString("SendGridPass");
+            model.SendGridApiKey = entity.GetString("SendGridApiKey");
+            model.DomainsJson = entity.GetString("DomainsJson");
         }
         catch (Exception ex)
         {

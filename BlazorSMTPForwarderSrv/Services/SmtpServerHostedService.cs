@@ -69,33 +69,17 @@ public class SmtpServerHostedService : IHostedService, IDisposable
     {
         _logger.LogInformation("Configuring SMTP Server...");
 
-        // 1. Load Settings from Azure Table
+        // Load Settings from Azure Table
         var settings = await _smtpServerConfiguration.LoadSettingsAsync(stoppingToken);
 
-        // 2. Build Server
+        // Build Server
         var builder = new SmtpServerBuilder()
-            .ServerName(settings.ServerName)
-            .Port(settings.ServerPorts[0]);
+            .ServerName(settings.ServerName ?? "localhost")
+            .Port((settings.ServerPorts != null && settings.ServerPorts.Length > 0) ? settings.ServerPorts[0] : 25);
 
         _smtpServer = builder.Build();
 
-        // 3. Configure Relay (SendGrid)
-        if (!string.IsNullOrEmpty(settings.SendGridHost))
-        {
-            _smtpServer.EnableRelay(relayConfig =>
-            {
-                relayConfig.DefaultSmartHost = new SmartHostConfiguration
-                {
-                    Host = settings.SendGridHost,
-                    Port = settings.SendGridPort > 0 ? settings.SendGridPort : 587,
-                    Credentials = new NetworkCredential(settings.SendGridUser, settings.SendGridPass),
-                    UseTls = true
-                };
-                relayConfig.MaxRetryCount = 3;
-            });
-        }
-
-        // 4. Configure Anti-Spam
+        // Configure Anti-Spam
         _smtpServer.AddAntiSpam(spamBuilder =>
         {
             if (settings.EnableSpfCheck) spamBuilder.EnableSpf();
@@ -112,7 +96,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
             }
         });
 
-        // 5. Wire up Message Handler
+        // Wire up Message Handler
         _smtpServer.MessageReceived += async (s, e) => await _messageHandler.HandleMessageAsync(s, e);
 
         _logger.LogInformation("Starting SMTP Server...");
@@ -149,15 +133,16 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         // Initialize last restart requested time if needed
         if (_lastRestartRequested == DateTimeOffset.MinValue)
         {
-             var entity = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: stoppingToken);
-             if (entity.HasValue && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset dt)
-             {
-                 _lastRestartRequested = dt;
-             }
-             else
-             {
-                 _lastRestartRequested = DateTimeOffset.UtcNow;
-             }
+            var entity = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: stoppingToken);
+
+            if (entity.HasValue && entity.Value != null && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset dt)
+            {
+                _lastRestartRequested = dt;
+            }
+            else
+            {
+                _lastRestartRequested = DateTimeOffset.UtcNow;
+            }
         }
 
         while (!stoppingToken.IsCancellationRequested)
@@ -167,7 +152,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
             try 
             {
                 var entity = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current", cancellationToken: stoppingToken);
-                if (entity.HasValue && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset requestedAt)
+                if (entity.HasValue && entity.Value != null && entity.Value.TryGetValue("RestartRequested", out var val) && val is DateTimeOffset requestedAt)
                 {
                     if (requestedAt > _lastRestartRequested)
                     {
