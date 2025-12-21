@@ -75,7 +75,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         // Build Server
         var builder = new SmtpServerBuilder()
             .ServerName(settings.ServerName ?? "localhost")
-            .Port((settings.ServerPorts != null && settings.ServerPorts.Length > 0) ? settings.ServerPorts[0] : 25);
+            .Port(25);
 
         _smtpServer = builder.Build();
 

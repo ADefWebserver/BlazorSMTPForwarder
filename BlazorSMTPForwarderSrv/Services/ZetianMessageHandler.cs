@@ -56,18 +56,21 @@ public class ZetianMessageHandler
         {
             try
             {
-                var container = _blobServiceClient.GetBlobContainerClient("email-messages");
-                await container.CreateIfNotExistsAsync();
+                if (!_smtpServer.DoNotSaveMessages)
+                {
+                    var container = _blobServiceClient.GetBlobContainerClient("email-messages");
+                    await container.CreateIfNotExistsAsync();
 
-                var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
-                var blobClient = container.GetBlobClient(fileName);
+                    var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
+                    var blobClient = container.GetBlobClient(fileName);
 
-                using var stream = new MemoryStream();
-                await message.SaveToStreamAsync(stream);
-                stream.Position = 0;
+                    using var stream = new MemoryStream();
+                    await message.SaveToStreamAsync(stream);
+                    stream.Position = 0;
 
-                await blobClient.UploadAsync(stream);
-                _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
+                    await blobClient.UploadAsync(stream);
+                    _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
+                }
 
                 if (!string.IsNullOrEmpty(_smtpServer.SendGridApiKey) && !string.IsNullOrEmpty(_smtpServer.DomainsJson))
                 {
@@ -120,7 +123,29 @@ public class ZetianMessageHandler
     private bool IsLocalRecipient(string address)
     {
         if (string.IsNullOrWhiteSpace(_smtpServer.ServerName)) return true;
-        return address.EndsWith("@" + _smtpServer.ServerName, StringComparison.OrdinalIgnoreCase);
+
+        if (address.EndsWith("@" + _smtpServer.ServerName, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(_smtpServer.DomainsJson))
+        {
+            try
+            {
+                var domains = JsonSerializer.Deserialize<List<DomainConfiguration>>(_smtpServer.DomainsJson);
+                if (domains != null)
+                {
+                    return domains.Any(d => address.EndsWith("@" + d.DomainName, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error parsing DomainsJson in IsLocalRecipient");
+            }
+        }
+
+        return false;
     }
 
     private async Task ForwardMessageAsync(SendGridClient client, MimeMessage originalMessage, string destination)

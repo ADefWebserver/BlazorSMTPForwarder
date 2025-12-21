@@ -7,7 +7,7 @@ namespace BlazorSMTPForwarderSrv.Models
     public class SmtpSettingsModel
     {
         public string? ServerName { get; set; }
-        public int[]? ServerPorts { get; set; }
+        public string? ServerDomains { get; set; }
         public bool EnableSpamFiltering { get; set; }
         public string? SpamhausKey { get; set; }
         public bool EnableSpfCheck { get; set; }
@@ -15,5 +15,6 @@ namespace BlazorSMTPForwarderSrv.Models
         public bool EnableDmarcCheck { get; set; }
         public string? SendGridApiKey { get; set; }
         public string? DomainsJson { get; set; }
+        public bool DoNotSaveMessages { get; set; }
     }
 }

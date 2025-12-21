@@ -59,12 +59,12 @@ public class SmtpServerConfiguration
             }
 
             EnsureProperty("ServerName", "localhost");
-            EnsureProperty("ServerPorts", "25");
             EnsureProperty("SpamhausKey", "");
             EnsureProperty("EnableSpfCheck", false);
             EnsureProperty("EnableDkimCheck", false);
             EnsureProperty("EnableDmarcCheck", false);
             EnsureProperty("SendGridApiKey", "");
+            EnsureProperty("DoNotSaveMessages", false);
 
             // Update the table if new properties were added
             if (needsUpdate)
@@ -74,21 +74,12 @@ public class SmtpServerConfiguration
             }
 
             model.ServerName = entity.GetString("ServerName");
-            var portsString = entity.GetString("ServerPorts");
-            if (!string.IsNullOrEmpty(portsString))
-            {
-                model.ServerPorts = portsString.Split(',').Select(p => int.Parse(p.Trim())).ToArray();
-            }
-            else
-            {
-                model.ServerPorts = new int[] { 25 };
-            }
-
             model.EnableSpamFiltering = entity.GetBoolean("EnableSpamFiltering") ?? false;
             model.SpamhausKey = entity.GetString("SpamhausKey");
             model.EnableSpfCheck = entity.GetBoolean("EnableSpfCheck") ?? false;
             model.EnableDkimCheck = entity.GetBoolean("EnableDkimCheck") ?? false;
             model.EnableDmarcCheck = entity.GetBoolean("EnableDmarcCheck") ?? false;
+            model.DoNotSaveMessages = entity.GetBoolean("DoNotSaveMessages") ?? false;
 
             model.SendGridApiKey = entity.GetString("SendGridApiKey");
             model.DomainsJson = entity.GetString("DomainsJson");

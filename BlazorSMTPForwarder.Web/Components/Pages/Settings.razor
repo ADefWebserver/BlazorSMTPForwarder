@@ -45,16 +45,17 @@
                             }
 
                             <div class="card shadow-sm mb-4">
-                                <div class="card-body">
-                                    <h5 class="card-title">Server Configuration</h5>
+                                <div class="card-body">                                    
                                     <div class="row g-3">
                                         <div class="col-12 col-md-6">
-                                            <label class="form-label">Server Name</label>
+                                            <label class="form-label">Server Domain</label>
                                             <input class="form-control" @bind="ServerName" />
                                         </div>
-                                        <div class="col-12 col-md-6">
-                                            <label class="form-label">Ports</label>
-                                            <input class="form-control" @bind="Ports" />
+                                        <div class="col-12 col-md-6 d-flex align-items-end">
+                                            <div class="form-check form-switch">
+                                                <input class="form-check-input" type="checkbox" id="doNotSaveMessages" @bind="DoNotSaveMessages" />
+                                                <label class="form-check-label" for="doNotSaveMessages">Do Not Save Messages to Blob Storage</label>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -170,10 +171,8 @@
                 <div class="p-3">
                     <div class="card shadow-sm mb-4">
                         <div class="card-body">
-                            <h5 class="card-title">Spam Configuration</h5>
                             <div class="row g-3">
                                 <div class="col-12 col-md-6">
-                                    <br />
                                     <label class="form-label" for="spamhausKey">Spamhaus Key</label>
                                     <div class="input-group">
                                         <input id="spamhausKey" class="form-control" autocomplete="off"
@@ -283,7 +282,6 @@
                 <div class="p-3">
                     <div class="card shadow-sm mb-4">
                         <div class="card-body">
-                            <h5 class="card-title">SendGrid Configuration</h5>
                             <div class="row g-3">
                                 <div class="col-12">
                                     <label class="form-label">API Key</label>
@@ -306,14 +304,15 @@
     const string PK = "SmtpServer";
     const string RKSettings = "Current";
 
-    string? ServerName; string? Ports; string? AppPassword; string? SpamhausKey;
-    string? SendGridApiKey; 
+    string? ServerName; string? AppPassword; string? SpamhausKey;
+    string? SendGridApiKey;
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
     bool IsLoading; bool Saving; bool ShowSpamhausKey; bool ShowAppPassword;
 
     bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck;
+    bool DoNotSaveMessages;
 
     // Spam Log Logic
     List<SpamLog>? SpamLogs;
@@ -339,7 +338,6 @@
             if (settings.HasValue)
             {
                 ServerName = settings.Value?.GetString("ServerName");
-                Ports = settings.Value?.GetString("ServerPorts");
 
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
 
@@ -356,6 +354,7 @@
                 EnableSpfCheck = settings.Value?.GetBoolean("EnableSpfCheck") ?? false;
                 EnableDmarcCheck = settings.Value?.GetBoolean("EnableDmarcCheck") ?? false;
                 EnableDkimCheck = settings.Value?.GetBoolean("EnableDkimCheck") ?? false;
+                DoNotSaveMessages = settings.Value?.GetBoolean("DoNotSaveMessages") ?? false;
             }
             AppPassword = Config["AppPassword"];
         }
@@ -376,13 +375,13 @@
             var entity = new TableEntity(PK, RKSettings)
             {
                 { "ServerName", ServerName },
-                { "Ports", Ports },
                 { "SendGridApiKey", SendGridApiKey },
                 { "DomainsJson", JsonSerializer.Serialize(Domains) },
                 { "EnableSpamFiltering", EnableSpamFiltering },
                 { "EnableSpfCheck", EnableSpfCheck },
                 { "EnableDmarcCheck", EnableDmarcCheck },
                 { "EnableDkimCheck", EnableDkimCheck },
+                { "DoNotSaveMessages", DoNotSaveMessages },
                 { "SpamhausKey", SpamhausKey }
             };
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
