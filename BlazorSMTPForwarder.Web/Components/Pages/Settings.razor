@@ -25,9 +25,6 @@
     <RadzenTabs RenderMode="TabRenderMode.Client">
         <Tabs>
             <RadzenTabsItem Text="General">
-                <div class="mb-3 d-flex gap-2">
-                    <RadzenButton Text="Reset Server" Click="@RequestServerRestart" ButtonStyle="ButtonStyle.Warning" />
-                </div>
                 <div class="row">
                     <div class="col-md-8">
                         @if (IsLoading)
@@ -99,21 +96,15 @@
                                                     Protects access to this UI. Blank means open
                                                     access. (Stored in appsettings.json)
                                                 </div>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    <button type="submit" class="btn btn-success"
-                                                            disabled="@(Saving || IsLoading)">
-                                                        @if (Saving)
-                                                        {
-                                                            <span class="spinner-border spinner-border-sm me-2" role="status"
-                                                                  aria-hidden="true"></span>
-                                                        }
-                                                        Save
-                                                    </button>
-                                                </div>
                                             </div>
                                         </div>
                                     </form>
                                 </div>
+                            </div>
+
+                            <div class="mb-3 d-flex gap-2">
+                                <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
+                                <RadzenButton Text="Reset Server" Click="@RequestServerRestart" ButtonStyle="ButtonStyle.Warning" />
                             </div>
                         }
                     </div>
@@ -315,14 +306,6 @@
                                     <label class="form-label">API Key</label>
                                     <input class="form-control" @bind="SendGridApiKey" type="password" />
                                 </div>
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label">From Email</label>
-                                    <input class="form-control" @bind="SendGridFromEmail" />
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label">From Name</label>
-                                    <input class="form-control" @bind="SendGridFromName" />
-                                </div>
                                 <div class="col-12">
                                     <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
                                 </div>
@@ -342,7 +325,7 @@
 
     string? ServerName; string? Ports; string? AllowedUsername; string? AllowedPassword; string?
     AppPassword; string? SpamhausKey;
-    string? SendGridApiKey; string? SendGridFromEmail; string? SendGridFromName;
+    string? SendGridApiKey; 
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
@@ -374,15 +357,13 @@
             if (settings.HasValue)
             {
                 ServerName = settings.Value?.GetString("ServerName");
-                Ports = settings.Value?.GetString("Ports");
+                Ports = settings.Value?.GetString("ServerPorts");
                 AllowedUsername = settings.Value?.GetString("AllowedUsername");
                 AllowedPassword = settings.Value?.GetString("AllowedPassword");
 
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
 
                 SendGridApiKey = settings.Value?.GetString("SendGridApiKey");
-                SendGridFromEmail = settings.Value?.GetString("SendGridFromEmail");
-                SendGridFromName = settings.Value?.GetString("SendGridFromName");
 
                 var domainsJson = settings.Value?.GetString("DomainsJson");
                 if (!string.IsNullOrEmpty(domainsJson))
@@ -419,8 +400,6 @@
                 { "AllowedUsername", AllowedUsername },
                 { "AllowedPassword", AllowedPassword },
                 { "SendGridApiKey", SendGridApiKey },
-                { "SendGridFromEmail", SendGridFromEmail },
-                { "SendGridFromName", SendGridFromName },
                 { "DomainsJson", JsonSerializer.Serialize(Domains) },
                 { "EnableSpamFiltering", EnableSpamFiltering },
                 { "EnableSpfCheck", EnableSpfCheck },
