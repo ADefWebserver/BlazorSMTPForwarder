@@ -8,6 +8,7 @@
 @using Azure
 @using Azure.Data.Tables.Models
 @using System.Text.Json
+@using BlazorSMTPForwarder.ServiceDefaults.Models
 
 <div class="rz-p-2">
     <RadzenNotification />
@@ -26,7 +27,12 @@
             </div>
             <div>
                 <RadzenLabel Text="To" />
-                <RadzenTextBox @bind-Value="_model.To" Style="width:100%" />
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <RadzenTextBox @bind-Value="ToUser" Change="@UpdateToAddress" Style="flex: 1;" Placeholder="User" />
+                    <span>@("@")</span>
+                    <RadzenDropDown Data="@Domains" TextProperty="DomainName" ValueProperty="DomainName" @bind-Value="ToDomain" Change="@UpdateToAddress" Style="flex: 1;" Placeholder="Select Domain" />
+                </div>
+                <ValidationMessage For="@(() => _model.To)" />
             </div>
             <div style="grid-column: 1 / -1;">
                 <RadzenLabel Text="Subject" />
@@ -73,11 +79,70 @@
     private bool _sending;
     private string? _settingsError;
 
+    private List<DomainConfiguration> Domains = new();
+    private string ToUser = "";
+    private string ToDomain = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDomainsAsync();
+    }
+
+    private async Task LoadDomainsAsync()
+    {
+        try
+        {
+            var table = TableServiceClient.GetTableClient("SMTPSettings");
+            var settings = await table.GetEntityIfExistsAsync<TableEntity>("SmtpServer", "Current");
+            if (settings.HasValue)
+            {
+                var domainsJson = settings.Value?.GetString("DomainsJson");
+                if (!string.IsNullOrEmpty(domainsJson))
+                {
+                    try { Domains = JsonSerializer.Deserialize<List<DomainConfiguration>>(domainsJson) ?? new(); }
+                    catch { Domains = new(); }
+                }
+            }
+            
+            if (string.IsNullOrEmpty(ToDomain) && Domains.Any())
+            {
+                ToDomain = Domains.First().DomainName;
+                UpdateToAddress();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading domains: {ex.Message}");
+        }
+    }
+
+    private void UpdateToAddress()
+    {
+        if (!string.IsNullOrWhiteSpace(ToUser) && !string.IsNullOrWhiteSpace(ToDomain))
+        {
+            _model.To = $"{ToUser}@{ToDomain}";
+        }
+        else
+        {
+            _model.To = string.Empty;
+        }
+    }
+
     protected override void OnParametersSet()
     {
         if (!string.IsNullOrWhiteSpace(DefaultTo) && string.IsNullOrWhiteSpace(_model.To))
         {
             _model.To = DefaultTo!;
+            var parts = _model.To.Split('@');
+            if (parts.Length == 2)
+            {
+                ToUser = parts[0];
+                ToDomain = parts[1];
+            }
+            else
+            {
+                ToUser = _model.To;
+            }
         }
         if (!string.IsNullOrWhiteSpace(DefaultFrom))
         {
