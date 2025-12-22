@@ -24,16 +24,19 @@ namespace BlazorSMTPForwarderSrv.Services;
 public class ZetianMessageHandler
 {
     private readonly ILogger<ZetianMessageHandler> _logger;
+    private readonly TableStorageLogger _tableLogger;
     private readonly SmtpServerConfiguration _smtpServerConfiguration;
     private readonly BlobServiceClient _blobServiceClient;
     private SmtpSettingsModel _smtpServer = new SmtpSettingsModel();
 
     public ZetianMessageHandler(
         ILogger<ZetianMessageHandler> logger,
+        TableStorageLogger tableLogger,
         SmtpServerConfiguration smtpServerConfiguration,
         BlobServiceClient blobServiceClient)
     {
         _logger = logger;
+        _tableLogger = tableLogger;
         _smtpServerConfiguration = smtpServerConfiguration;
         _blobServiceClient = blobServiceClient;
     }
@@ -49,6 +52,7 @@ public class ZetianMessageHandler
         var session = e.Session;
 
         _logger.LogInformation("Received message from {From} to {Recipients}", message.From, string.Join(", ", message.Recipients));
+        await _tableLogger.LogInformationAsync($"Received message from {message.From} to {string.Join(", ", message.Recipients)}", nameof(ZetianMessageHandler));
 
         bool hasLocal = message.Recipients.Any(r => IsLocalRecipient(r.Address));
 
@@ -70,6 +74,7 @@ public class ZetianMessageHandler
 
                     await blobClient.UploadAsync(stream);
                     _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
+                    await _tableLogger.LogInformationAsync($"Message saved to blob: {fileName}", nameof(ZetianMessageHandler));
                 }
 
                 if (!string.IsNullOrEmpty(_smtpServer.SendGridApiKey) && !string.IsNullOrEmpty(_smtpServer.DomainsJson))
@@ -98,12 +103,14 @@ public class ZetianMessageHandler
                                         if (rule != null)
                                         {
                                             _logger.LogInformation("Forwarding message for {Recipient} to {Destination}", recipient.Address, rule.DestinationEmail);
+                                            await _tableLogger.LogInformationAsync($"Forwarding message for {recipient.Address} to {rule.DestinationEmail}", nameof(ZetianMessageHandler));
                                             await ForwardMessageAsync(sendGridClient, mimeMessage, rule.DestinationEmail);
                                         }
                                     }
                                     else if (domainConfig.CatchAll.Type == CatchAllType.Forward && !string.IsNullOrEmpty(domainConfig.CatchAll.ForwardToEmail))
                                     {
                                          _logger.LogInformation("Catch-all forwarding message for {Recipient} to {Destination}", recipient.Address, domainConfig.CatchAll.ForwardToEmail);
+                                         await _tableLogger.LogInformationAsync($"Catch-all forwarding message for {recipient.Address} to {domainConfig.CatchAll.ForwardToEmail}", nameof(ZetianMessageHandler));
                                          await ForwardMessageAsync(sendGridClient, mimeMessage, domainConfig.CatchAll.ForwardToEmail);
                                     }
                                 }
@@ -113,12 +120,14 @@ public class ZetianMessageHandler
                     catch (Exception ex)
                     {
                         _logger.LogError(ex, "Error forwarding message via SendGrid");
+                        await _tableLogger.LogErrorAsync("Error forwarding message via SendGrid", ex, nameof(ZetianMessageHandler));
                     }
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to save message to blob storage.");
+                await _tableLogger.LogErrorAsync("Failed to save message to blob storage.", ex, nameof(ZetianMessageHandler));
             }
         }
     }
@@ -187,12 +196,15 @@ public class ZetianMessageHandler
         if (response.StatusCode != HttpStatusCode.Accepted && response.StatusCode != HttpStatusCode.OK)
         {
              _logger.LogError("SendGrid failed with status code {StatusCode}", response.StatusCode);
+             await _tableLogger.LogErrorAsync($"SendGrid failed with status code {response.StatusCode}", null, nameof(ZetianMessageHandler));
              var body = await response.Body.ReadAsStringAsync();
              _logger.LogError("SendGrid response: {Response}", body);
+             await _tableLogger.LogErrorAsync($"SendGrid response: {body}", null, nameof(ZetianMessageHandler));
         }
         else
         {
             _logger.LogInformation("Forwarded successfully to {Destination}", destination);
+            await _tableLogger.LogInformationAsync($"Forwarded successfully to {destination}", nameof(ZetianMessageHandler));
         }
     }
 }

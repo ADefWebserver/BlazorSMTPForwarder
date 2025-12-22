@@ -15,6 +15,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
 {
     private SmtpServer? _smtpServer;
     private readonly ILogger<SmtpServerHostedService> _logger;
+    private readonly TableStorageLogger _tableLogger;
     private readonly TableServiceClient _tableServiceClient;
     private readonly ZetianMessageHandler _messageHandler;
     private readonly SmtpServerConfiguration _smtpServerConfiguration;
@@ -22,11 +23,13 @@ public class SmtpServerHostedService : IHostedService, IDisposable
     public SmtpServerHostedService(
         IServiceProvider serviceProvider,
         ILogger<SmtpServerHostedService> logger,
+        TableStorageLogger tableLogger,
         TableServiceClient tableServiceClient,
         ZetianMessageHandler messageHandler,
         SmtpServerConfiguration smtpServerConfiguration)
     {
         _logger = logger;
+        _tableLogger = tableLogger;
         _tableServiceClient = tableServiceClient;
         _messageHandler = messageHandler;
         _smtpServerConfiguration = smtpServerConfiguration;
@@ -60,6 +63,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error in SMTP Server loop. Restarting in 5 seconds...");
+                await _tableLogger.LogErrorAsync("Error in SMTP Server loop. Restarting in 5 seconds...", ex, nameof(SmtpServerHostedService));
                 await Task.Delay(5000, stoppingToken);
             }
         }
@@ -68,6 +72,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
     private async Task RunServerInstanceAsync(CancellationToken stoppingToken)
     {
         _logger.LogInformation("Configuring SMTP Server...");
+        await _tableLogger.LogInformationAsync("Configuring SMTP Server...", nameof(SmtpServerHostedService));
 
         // Load Settings from Azure Table
         var settings = await _smtpServerConfiguration.LoadSettingsAsync(stoppingToken);

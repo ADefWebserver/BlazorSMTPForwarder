@@ -14,6 +14,9 @@ builder.AddAzureBlobServiceClient("emailblobs");
 // Configure SmtpServer settings from configuration
 builder.Services.AddSingleton<SmtpServerConfiguration>();
 
+// Register TableStorageLogger
+builder.Services.AddSingleton<TableStorageLogger>();
+
 // Register SMTP Services
 builder.Services.AddSingleton<ZetianMessageHandler>();
 builder.Services.AddHostedService<SmtpServerHostedService>();

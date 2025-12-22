@@ -18,6 +18,7 @@
 @inject IWebHostEnvironment Env
 @inject DialogService DialogService
 @inject IHttpClientFactory HttpClientFactory
+@inject BlazorSMTPForwarder.Web.Services.LogService LogService
 
 <div>
     <h1 class="h3 mb-0">Settings</h1>
@@ -299,6 +300,56 @@
                     </div>
                 </div>
             </RadzenTabsItem>
+
+            <RadzenTabsItem Text="Logs">
+                <div class="p-3">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="m-0">Server Logs</h5>
+                        <div class="d-flex gap-2">
+                            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadServerLogsAsync"
+                                          Size="ButtonSize.Small" Disabled="@IsLoadingLogs" />
+                            @if (_logsHasMore && !IsLoadingLogs)
+                            {
+                                <RadzenButton Icon="add" Text="More" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@LoadMoreServerLogsAsync" />
+                            }
+                        </div>
+                    </div>
+
+                    @if (IsLoadingLogs && (ServerLogs == null || ServerLogs.Count == 0))
+                    {
+                        <div class="text-center p-3">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    }
+                    else if (ServerLogs == null || !ServerLogs.Any())
+                    {
+                        <div class="text-muted">No logs found.</div>
+                    }
+                    else
+                    {
+                        <RadzenDataGrid Data="@ServerLogs" TItem="ServerLog" AllowPaging="true" PageSize="20"
+                                        AllowSorting="true" ColumnWidth="150px">
+                            <Columns>
+                                <RadzenDataGridColumn TItem="ServerLog" Property="Timestamp" Title="Time" Width="160px">
+                                    <Template Context="data">
+                                        @data.Timestamp?.ToLocalTime().ToString("g")
+                                    </Template>
+                                </RadzenDataGridColumn>
+                                <RadzenDataGridColumn TItem="ServerLog" Property="Level" Title="Level" Width="100px" />
+                                <RadzenDataGridColumn TItem="ServerLog" Property="Source" Title="Source" Width="200px" />
+                                <RadzenDataGridColumn TItem="ServerLog" Property="Message" Title="Message" />
+                                <RadzenDataGridColumn TItem="ServerLog" Property="Exception" Title="Exception" />
+                            </Columns>
+                        </RadzenDataGrid>
+                        @if (IsLoadingLogs && ServerLogs.Count > 0)
+                        {
+                            <div class="mt-2 text-muted">Loading more...</div>
+                        }
+                    }
+                </div>
+            </RadzenTabsItem>
         </Tabs>
     </RadzenTabs>
 </div>
@@ -329,6 +380,45 @@
     {
         await LoadAsync();
         _ = LoadSpamLogsAsync();
+        _ = LoadServerLogsAsync();
+    }
+
+    // Server Log Logic
+    List<ServerLog>? ServerLogs;
+    bool IsLoadingLogs;
+    string? _logsContinuationToken;
+    bool _logsHasMore;
+    readonly int _logsPageSize = 50;
+
+    async Task LoadServerLogsAsync()
+    {
+        _logsContinuationToken = null;
+        _logsHasMore = true;
+        ServerLogs = new List<ServerLog>();
+        await LoadMoreServerLogsAsync();
+    }
+
+    async Task LoadMoreServerLogsAsync()
+    {
+        if (IsLoadingLogs || !_logsHasMore) return;
+        IsLoadingLogs = true;
+        try
+        {
+            var result = await LogService.GetLogsAsync(_logsPageSize, _logsContinuationToken);
+            ServerLogs!.AddRange(result.Logs);
+            _logsContinuationToken = result.ContinuationToken;
+            _logsHasMore = !string.IsNullOrEmpty(_logsContinuationToken);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Failed to load server logs");
+            _logsHasMore = false;
+        }
+        finally
+        {
+            IsLoadingLogs = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     async Task LoadAsync()
