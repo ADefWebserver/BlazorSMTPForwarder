@@ -46,11 +46,14 @@
                                    ValueProperty="Id" Change="@OnMessageSelected"
                                    Style="flex:1 1 auto; min-height:0; overflow:auto;">
                         <Template Context="m">
+                            @{ var item = (EmailListItem)m; }
                             <div style="padding:4px 4px; display:flex; align-items:center; gap:6px; width:100%;">
-                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(async _ => await ConfirmDeleteAsync((EmailListItem)m))" />
-                                <div style="min-width:0; flex:1 1 auto;">
-                                    <div style="font-weight:600;" class="rz-truncate" title="@DisplaySubject(((EmailListItem)m).Subject)">@DisplaySubject(((EmailListItem)m).Subject)</div>
-                                    <div class="rz-truncate" title="@((EmailListItem)m).From">@((EmailListItem)m).From</div>
+                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(async _ => await ConfirmDeleteAsync(item))" />
+                                <div style="min-width:0; flex:1 1 auto; display:flex; flex-direction:column; gap:2px;">
+                                    <div class="rz-truncate" style="font-weight:bold;" title="@DisplaySubject(item.Subject)">Subject: @DisplaySubject(item.Subject)</div>
+                                    <div class="rz-truncate" title="@item.From">From: @item.From</div>
+                                    <div class="rz-truncate" title="@item.RecipientUser">To: @item.RecipientUser</div>
+                                    <div class="rz-truncate" style="font-size:0.85em; color:#666;">@item.Received.ToLocalTime().ToString("g")</div>
                                 </div>
                             </div>
                         </Template>

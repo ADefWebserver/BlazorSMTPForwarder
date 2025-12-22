@@ -83,7 +83,23 @@ public class ZetianMessageHandler
                                 var blobClient = container.GetBlobClient(fileName);
 
                                 stream.Position = 0;
-                                await blobClient.UploadAsync(stream);
+                                
+                                // Extract metadata
+                                var metadata = new Dictionary<string, string>();
+                                try
+                                {
+                                    var mimeMessage = MimeMessage.Load(stream);
+                                    metadata["Subject"] = mimeMessage.Subject ?? "(no subject)";
+                                    metadata["From"] = mimeMessage.From?.ToString() ?? "";
+                                    metadata["RecipientUser"] = $"{userName}@{domain}";
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogWarning(ex, "Failed to extract metadata for {BlobName}", fileName);
+                                }
+
+                                stream.Position = 0;
+                                await blobClient.UploadAsync(stream, metadata: metadata);
                                 _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
                                 await _tableLogger.LogInformationAsync($"Message saved to blob: {fileName}", nameof(ZetianMessageHandler));
                             }

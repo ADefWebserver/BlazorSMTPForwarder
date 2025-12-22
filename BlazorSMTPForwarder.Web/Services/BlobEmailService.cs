@@ -87,7 +87,7 @@ public class BlobEmailService
         return results.OrderBy(s => s).ToList();
     }
 
-    public async Task<IReadOnlyList<EmailListItem>> ListEmailsAsync(string recipientFolder, CancellationToken ct = default)
+    public async Task<IReadOnlyList<EmailListItem>> ListEmailsAsync(string? recipientFolder, CancellationToken ct = default)
     {
         var items = new List<EmailListItem>();
         try
@@ -118,10 +118,33 @@ public class BlobEmailService
                 var received = blob.Properties.CreatedOn ?? blob.Properties.LastModified ?? DateTimeOffset.UtcNow;
                 var size = blob.Properties.ContentLength ?? 0;
 
+                var subject = blob.Metadata.TryGetValue("Subject", out var subj) ? subj : null;
+                var from = blob.Metadata.TryGetValue("From", out var f) ? f : null;
+
+                // If metadata is missing (legacy emails), try to fetch from blob content
+                if (subject == null || from == null)
+                {
+                    try 
+                    {
+                        var blobClient = container.GetBlobClient(blob.Name);
+                        // Download first 4KB to get headers
+                        var downloadResult = await blobClient.DownloadAsync(new HttpRange(0, 4096), cancellationToken: ct);
+                        using var reader = new StreamReader(downloadResult.Value.Content);
+                        var headerText = await reader.ReadToEndAsync();
+                        
+                        if (subject == null) subject = TryGetHeader(headerText, "Subject") ?? "(no subject)";
+                        if (from == null) from = TryGetHeader(headerText, "From") ?? "";
+                    }
+                    catch
+                    {
+                        // Ignore errors, just show empty
+                    }
+                }
+
                 items.Add(new EmailListItem(
                     Id: blob.Name,
-                    Subject: blob.Metadata.TryGetValue("Subject", out var subj) ? subj : "(no subject)",
-                    From: blob.Metadata.TryGetValue("From", out var from) ? from : "",
+                    Subject: subject ?? "(no subject)",
+                    From: from ?? "",
                     Received: received,
                     RecipientUser: metaRecipient ?? "",
                     Size: size,
@@ -166,6 +189,20 @@ public class BlobEmailService
             string subject = TryGetHeader(raw, "Subject") ?? "(no subject)";
             string from = TryGetHeader(raw, "From") ?? "";
             string recipient = TryGetHeader(raw, "X-SMTP-Server-Recipient-User") ?? "";
+            
+            if (string.IsNullOrEmpty(recipient))
+            {
+                var parts = blobName.Split('/');
+                if (parts.Length >= 3)
+                {
+                    recipient = $"{parts[1]}@{parts[0]}";
+                }
+                else if (parts.Length == 2)
+                {
+                    recipient = parts[0];
+                }
+            }
+
             string receivedAt = TryGetHeader(raw, "X-SMTP-Server-Received") ?? DateTime.UtcNow.ToString("R");
             var received = DateTimeOffset.TryParse(receivedAt, out var r) ? r : DateTimeOffset.UtcNow;
 
