@@ -489,32 +489,39 @@
     async Task SaveAppPasswordToAppSettingsAsync(string value)
     {
         var path = Path.Combine(Env.ContentRootPath, "appsettings.json");
-        JsonObject root;
-        try
+        string json;
+        if (File.Exists(path))
         {
-            if (File.Exists(path))
+            json = await File.ReadAllTextAsync(path);
+        }
+        else
+        {
+            json = "{ }";
+        }
+
+        var newValueJson = JsonSerializer.Serialize(value);
+        var regex = new System.Text.RegularExpressions.Regex(@"(""AppPassword""\s*:\s*)(""(?:[^""\\]|\\.)*""|null)", System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        if (regex.IsMatch(json))
+        {
+            json = regex.Replace(json, $"$1{newValueJson}");
+        }
+        else
+        {
+            var openBraceIndex = json.IndexOf('{');
+            if (openBraceIndex >= 0)
             {
-                var json = await File.ReadAllTextAsync(path);
-                var documentOptions = new JsonDocumentOptions
-                {
-                    CommentHandling = JsonCommentHandling.Skip,
-                    AllowTrailingCommas = true
-                };
-                root = JsonNode.Parse(json, null, documentOptions) as JsonObject ?? new JsonObject();
+                json = json.Insert(openBraceIndex + 1, $"{Environment.NewLine}  \"AppPassword\": {newValueJson},");
             }
             else
             {
-                root = new JsonObject();
+                var root = new JsonObject();
+                root["AppPassword"] = value;
+                json = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             }
         }
-        catch
-        {
-            root = new JsonObject();
-        }
 
-        root["AppPassword"] = value;
-
-        await File.WriteAllTextAsync(path, root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        await File.WriteAllTextAsync(path, json);
     }
 
     async Task RequestServerRestart()
