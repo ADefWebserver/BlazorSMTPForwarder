@@ -63,4 +63,18 @@ public class TableStorageLogger
     {
         await LogAsync(message, "Warning", null, source);
     }
+
+    public async Task LogSpamAsync(SpamLog spamLog)
+    {
+        try
+        {
+            var spamTableClient = _tableClient.ServiceClient.GetTableClient("spamlogs");
+            await spamTableClient.CreateIfNotExistsAsync();
+            await spamTableClient.AddEntityAsync(spamLog);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to write to spam log.");
+        }
+    }
 }

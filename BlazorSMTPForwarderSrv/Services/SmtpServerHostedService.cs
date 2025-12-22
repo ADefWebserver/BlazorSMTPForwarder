@@ -154,6 +154,25 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         // Wire up Message Handler
         _smtpServer.MessageReceived += async (s, e) => await _messageHandler.HandleMessageAsync(s, e);
 
+        _smtpServer.SessionCompleted += async (s, e) =>
+        {
+            if (e.Context.Properties.ContainsKey("SpamDetected"))
+            {
+                var spamLog = new SpamLog
+                {
+                    PartitionKey = "Spam",
+                    RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks).ToString("d19"),
+                    Timestamp = DateTimeOffset.UtcNow,
+                    SessionId = e.Context.Properties.TryGetValue("SessionId", out var sid) ? sid?.ToString() : null,
+                    IP = e.Context.RemoteEndPoint.Address.ToString(),
+                    From = e.Context.Properties.TryGetValue("MailFrom", out var from) ? from?.ToString() : null,
+                    To = e.Context.Properties.TryGetValue("RcptTo", out var to) ? to?.ToString() : null,
+                };
+
+                await _tableLogger.LogSpamAsync(spamLog);
+            }
+        };
+
         _logger.LogInformation("Starting SMTP Server...");
         
         // Start the server in a separate task because StartAsync blocks

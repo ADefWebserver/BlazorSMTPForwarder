@@ -226,6 +226,29 @@ public class ZetianMessageHandler
             }
         }
 
+        // Inline images
+        foreach (var part in originalMessage.BodyParts.OfType<MimePart>())
+        {
+            var contentId = part.ContentId;
+            if (!string.IsNullOrEmpty(contentId))
+            {
+                var cleanContentId = contentId.Trim('<', '>');
+                if (!string.IsNullOrEmpty(htmlContent) && htmlContent.Contains($"cid:{cleanContentId}"))
+                {
+                     using var stream = new MemoryStream();
+                     await part.Content.DecodeToAsync(stream);
+                     var content = Convert.ToBase64String(stream.ToArray());
+                     msg.AddAttachment(part.FileName ?? "image", content, part.ContentType.MimeType, "inline", cleanContentId);
+                }
+            }
+        }
+
+        // Add original email as attachment
+        using var originalEmailStream = new MemoryStream();
+        await originalMessage.WriteToAsync(originalEmailStream);
+        var originalEmailContent = Convert.ToBase64String(originalEmailStream.ToArray());
+        msg.AddAttachment("original_message.eml", originalEmailContent, "message/rfc822", "attachment");
+
         var response = await client.SendEmailAsync(msg);
         if (response.StatusCode != HttpStatusCode.Accepted && response.StatusCode != HttpStatusCode.OK)
         {
