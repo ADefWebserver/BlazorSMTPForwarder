@@ -10,7 +10,7 @@ sequenceDiagram
     participant Handler as ZetianMessageHandler
     participant Table as Azure Table Storage
     participant Blob as Azure Blob Storage
-    participant SendGrid as SendGrid Relay
+    participant SendGrid as SendGrid API
     participant Client as External SMTP Client
 
     Note over Program, HostedService: Application Startup
@@ -18,11 +18,10 @@ sequenceDiagram
     
     Note over HostedService, Table: Load Configuration
     HostedService->>Table: LoadSettingsAsync()
-    Table-->>HostedService: SMTPSettings (spam, relay config)
+    Table-->>HostedService: SMTPSettings (spam, domains, SendGrid key)
     
     Note over HostedService, Zetian: Configure SMTP Server
     HostedService->>Zetian: SmtpServerBuilder().ServerName().Port().Build()
-    HostedService->>Zetian: EnableRelay(SendGrid config)
     HostedService->>Zetian: AddAntiSpam(SPF, DKIM, DMARC, RBL)
     HostedService->>Zetian: MessageReceived += Handler.HandleMessageAsync
     HostedService->>Zetian: StartAsync()
@@ -37,17 +36,23 @@ sequenceDiagram
     activate Handler
 
     Note over Handler, Blob: Message Processing
-    Handler->>Handler: Determine Local vs Remote Recipients
+    Handler->>Handler: Check if Recipients are Local/Configured
     
-    alt Has Local Recipients
-        Handler->>Blob: CreateIfNotExistsAsync(email-messages)
-        Handler->>Blob: Upload .eml file
-        Handler-->>Handler: Log "Message saved to blob"
-    end
-    
-    alt Has Remote Recipients
-        Handler->>Zetian: QueueForRelayAsync(message, RelayPriority.Normal)
-        Zetian->>SendGrid: Relay via configured SmartHost
+    alt Has Configured Recipients
+        opt Save to Blob Enabled
+            Handler->>Blob: CreateIfNotExistsAsync(email-messages)
+            Handler->>Blob: Upload .eml file
+            Handler-->>Handler: Log "Message saved to blob"
+        end
+        
+        loop For Each Recipient
+            Handler->>Handler: Check Forwarding Rules
+            alt Rule Exists
+                Handler->>SendGrid: SendEmailAsync (Forward Message)
+                SendGrid-->>Handler: 202 Accepted / Error
+                Handler-->>Handler: Log Result
+            end
+        end
     end
 
     Handler-->>Zetian: Complete
