@@ -156,17 +156,17 @@ public class SmtpServerHostedService : IHostedService, IDisposable
 
         _smtpServer.SessionCompleted += async (s, e) =>
         {
-            if (e.Context.Properties.ContainsKey("SpamDetected"))
+            if (e.Session.Properties.ContainsKey("SpamDetected"))
             {
                 var spamLog = new SpamLog
                 {
                     PartitionKey = "Spam",
                     RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks).ToString("d19"),
                     Timestamp = DateTimeOffset.UtcNow,
-                    SessionId = e.Context.Properties.TryGetValue("SessionId", out var sid) ? sid?.ToString() : null,
-                    IP = e.Context.RemoteEndPoint.Address.ToString(),
-                    From = e.Context.Properties.TryGetValue("MailFrom", out var from) ? from?.ToString() : null,
-                    To = e.Context.Properties.TryGetValue("RcptTo", out var to) ? to?.ToString() : null,
+                    SessionId = e.Session.Properties.TryGetValue("SessionId", out var sid) ? sid?.ToString() : null,
+                    IP = e.Session.RemoteEndPoint.Address.ToString(),
+                    From = e.Session.Properties.TryGetValue("MailFrom", out var from) ? from?.ToString() : null,
+                    To = e.Session.Properties.TryGetValue("RcptTo", out var to) ? to?.ToString() : null,
                 };
 
                 await _tableLogger.LogSpamAsync(spamLog);
