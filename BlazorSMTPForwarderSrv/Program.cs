@@ -6,6 +6,7 @@ using Microsoft.Extensions.Hosting;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.AddServiceDefaults();
+builder.Services.AddWindowsService();
 
 // Add Azure Storage
 builder.AddAzureTableServiceClient("SMTPSettings");
