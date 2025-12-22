@@ -55,10 +55,16 @@ public class BlobEmailService
             await foreach (var blob in container.GetBlobsAsync(prefix: null, cancellationToken: ct))
             {
                 var name = blob.Name;
-                var slash = name.IndexOf('/');
-                if (slash > 0)
+                var parts = name.Split('/');
+                if (parts.Length >= 3)
                 {
-                    var folder = name.Substring(0, slash);
+                    // New structure: Domain/User/File.eml
+                    results.Add($"{parts[0]}/{parts[1]}");
+                }
+                else if (parts.Length == 2)
+                {
+                    // Old structure: User/File.eml
+                    var folder = parts[0];
                     if (!string.Equals(folder, ".$logs", StringComparison.Ordinal))
                         results.Add(folder);
                 }
@@ -95,6 +101,20 @@ public class BlobEmailService
                     continue;
 
                 var metaRecipient = blob.Metadata.TryGetValue("RecipientUser", out var recipient) ? recipient : recipientFolder;
+
+                if (string.IsNullOrEmpty(metaRecipient))
+                {
+                    var parts = blob.Name.Split('/');
+                    if (parts.Length >= 3)
+                    {
+                        metaRecipient = $"{parts[1]}@{parts[0]}";
+                    }
+                    else if (parts.Length == 2)
+                    {
+                        metaRecipient = parts[0];
+                    }
+                }
+
                 var received = blob.Properties.CreatedOn ?? blob.Properties.LastModified ?? DateTimeOffset.UtcNow;
                 var size = blob.Properties.ContentLength ?? 0;
 

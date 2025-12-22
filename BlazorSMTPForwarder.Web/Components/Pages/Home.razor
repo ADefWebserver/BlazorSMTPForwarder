@@ -158,12 +158,14 @@
 
     private async Task RefreshFoldersAsync()
     {
-        _recipientFolders = (await EmailService.GetRecipientFoldersAsync()).ToList();
+        var folders = (await EmailService.GetRecipientFoldersAsync()).ToList();
+        folders.Insert(0, "All");
+        _recipientFolders = folders;
         
-        // Select first folder if none selected
-        if (_recipientFolders.Any() && string.IsNullOrEmpty(_selectedRecipient))
+        // Select "All" if none selected
+        if (string.IsNullOrEmpty(_selectedRecipient))
         {
-            _selectedRecipient = _recipientFolders.First();
+            _selectedRecipient = "All";
         }
 
         if (!string.IsNullOrEmpty(_selectedRecipient))
@@ -186,7 +188,8 @@
         StateHasChanged();
         try
         {
-            _messages = (await EmailService.ListEmailsAsync(_selectedRecipient)).ToList();
+            var folder = _selectedRecipient == "All" ? null : _selectedRecipient;
+            _messages = (await EmailService.ListEmailsAsync(folder)).ToList();
         }
         finally
         {
@@ -362,9 +365,17 @@
 
     private async Task NewMessageClick()
     {
+        var defaultFrom = _selectedRecipient;
+        if (defaultFrom == "All") defaultFrom = "";
+        else if (defaultFrom != null && defaultFrom.Contains('/'))
+        {
+            var parts = defaultFrom.Split('/');
+            if (parts.Length == 2) defaultFrom = $"{parts[1]}@{parts[0]}";
+        }
+
         await DialogService.OpenAsync<ComposeEmailDialog>("New Message",
                new Dictionary<string, object>() {
-                   { "DefaultFrom", _selectedRecipient ?? "" }
+                   { "DefaultFrom", defaultFrom ?? "" }
                },
                new DialogOptions() { Width = "700px", Height = "620px", Resizable = true, Draggable = true });
         
@@ -414,7 +425,16 @@
 
         // Use MimeKit to parse email addresses properly
         var (fromAddress, fromDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "From", _currentEmail.Metadata.From);
-        var (toAddress, toDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "To", _selectedRecipient ?? _currentEmail.Metadata.RecipientUser + "@example.com");
+        
+        var fallbackTo = _currentEmail.Metadata.RecipientUser;
+        if ((string.IsNullOrEmpty(fallbackTo) || !fallbackTo.Contains('@')) && _selectedRecipient != "All" && _selectedRecipient != null && _selectedRecipient.Contains('/'))
+        {
+             var parts = _selectedRecipient.Split('/');
+             if (parts.Length == 2) fallbackTo = $"{parts[1]}@{parts[0]}";
+        }
+        if (string.IsNullOrEmpty(fallbackTo)) fallbackTo = "unknown@example.com";
+
+        var (toAddress, toDisplay) = ParseEmailAddressWithMimeKit(_currentEmail.RawEml, "To", fallbackTo);
         
         var originalSubject = _currentEmail.Metadata.Subject;
         var subject = !string.IsNullOrWhiteSpace(originalSubject) && !originalSubject.StartsWith("re:", StringComparison.OrdinalIgnoreCase)

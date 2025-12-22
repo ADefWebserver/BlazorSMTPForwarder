@@ -8,6 +8,7 @@ using Zetian.AntiSpam.Extensions;
 using BlazorSMTPForwarder.ServiceDefaults.Models;
 using Azure.Data.Tables;
 using System.Net;
+using System.Text.Json;
 
 namespace BlazorSMTPForwarderSrv.Services;
 
@@ -76,6 +77,60 @@ public class SmtpServerHostedService : IHostedService, IDisposable
 
         // Load Settings from Azure Table
         var settings = await _smtpServerConfiguration.LoadSettingsAsync(stoppingToken);
+
+        // Validate Settings
+        if (string.IsNullOrEmpty(settings.ServerName))
+        {
+            var msg = "SMTP settings not set: ServerName is missing.";
+            _logger.LogError(msg);
+            await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+        }
+
+        if (string.IsNullOrEmpty(settings.SendGridApiKey))
+        {
+            var msg = "Sendgrid Key not set.";
+            _logger.LogError(msg);
+            await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+        }
+
+        if (settings.EnableSpamFiltering && string.IsNullOrEmpty(settings.SpamhausKey))
+        {
+            var msg = "SPAMHAUS enabled but SPAMHAUS key not set.";
+            _logger.LogError(msg);
+            await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+        }
+
+        List<DomainConfiguration>? domains = null;
+        if (!string.IsNullOrEmpty(settings.DomainsJson))
+        {
+            try
+            {
+                domains = JsonSerializer.Deserialize<List<DomainConfiguration>>(settings.DomainsJson);
+            }
+            catch
+            {
+                // Ignore deserialization error here
+            }
+        }
+
+        if (domains == null || domains.Count == 0)
+        {
+            var msg = "No Domains have been configured.";
+            _logger.LogError(msg);
+            await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+        }
+        else
+        {
+            foreach (var domain in domains)
+            {
+                if (domain.CatchAll.Type == CatchAllType.None && (domain.ForwardingRules == null || domain.ForwardingRules.Count == 0))
+                {
+                    var msg = $"Domain '{domain.DomainName}' has been configured, and is not a catch all, but, no email forwarding is specified.";
+                    _logger.LogError(msg);
+                    await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+                }
+            }
+        }
 
         // Build Server
         var builder = new SmtpServerBuilder()

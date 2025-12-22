@@ -65,16 +65,30 @@ public class ZetianMessageHandler
                     var container = _blobServiceClient.GetBlobContainerClient("email-messages");
                     await container.CreateIfNotExistsAsync();
 
-                    var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
-                    var blobClient = container.GetBlobClient(fileName);
-
                     using var stream = new MemoryStream();
                     await message.SaveToStreamAsync(stream);
-                    stream.Position = 0;
 
-                    await blobClient.UploadAsync(stream);
-                    _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
-                    await _tableLogger.LogInformationAsync($"Message saved to blob: {fileName}", nameof(ZetianMessageHandler));
+                    foreach (var recipient in message.Recipients)
+                    {
+                        if (IsLocalRecipient(recipient.Address))
+                        {
+                            var address = recipient.Address;
+                            var parts = address.Split('@');
+                            if (parts.Length == 2)
+                            {
+                                var userName = parts[0];
+                                var domain = parts[1];
+
+                                var fileName = $"{domain}/{userName}/{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
+                                var blobClient = container.GetBlobClient(fileName);
+
+                                stream.Position = 0;
+                                await blobClient.UploadAsync(stream);
+                                _logger.LogInformation("Message saved to blob: {BlobName}", fileName);
+                                await _tableLogger.LogInformationAsync($"Message saved to blob: {fileName}", nameof(ZetianMessageHandler));
+                            }
+                        }
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(_smtpServer.SendGridApiKey) && !string.IsNullOrEmpty(_smtpServer.DomainsJson))
