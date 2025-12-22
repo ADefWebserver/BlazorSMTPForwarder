@@ -82,21 +82,18 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         if (string.IsNullOrEmpty(settings.ServerName))
         {
             var msg = "SMTP settings not set: ServerName is missing.";
-            _logger.LogError(msg);
             await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
         }
 
         if (string.IsNullOrEmpty(settings.SendGridApiKey))
         {
             var msg = "Sendgrid Key not set.";
-            _logger.LogError(msg);
             await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
         }
 
         if (settings.EnableSpamFiltering && string.IsNullOrEmpty(settings.SpamhausKey))
         {
             var msg = "SPAMHAUS enabled but SPAMHAUS key not set.";
-            _logger.LogError(msg);
             await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
         }
 
@@ -116,7 +113,6 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         if (domains == null || domains.Count == 0)
         {
             var msg = "No Domains have been configured.";
-            _logger.LogError(msg);
             await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
         }
         else
@@ -126,7 +122,6 @@ public class SmtpServerHostedService : IHostedService, IDisposable
                 if (domain.CatchAll.Type == CatchAllType.None && (domain.ForwardingRules == null || domain.ForwardingRules.Count == 0))
                 {
                     var msg = $"Domain '{domain.DomainName}' has been configured, and is not a catch all, but, no email forwarding is specified.";
-                    _logger.LogError(msg);
                     await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
                 }
             }

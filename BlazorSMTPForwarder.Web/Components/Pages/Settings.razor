@@ -495,7 +495,12 @@
             if (File.Exists(path))
             {
                 var json = await File.ReadAllTextAsync(path);
-                root = JsonNode.Parse(json) as JsonObject ?? new JsonObject();
+                var documentOptions = new JsonDocumentOptions
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                };
+                root = JsonNode.Parse(json, null, documentOptions) as JsonObject ?? new JsonObject();
             }
             else
             {
