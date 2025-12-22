@@ -293,6 +293,11 @@
                                     <input class="form-control" @bind="SendGridApiKey" type="password" />
                                 </div>
                                 <div class="col-12">
+                                    <label class="form-label">From Email</label>
+                                    <input class="form-control" @bind="SendGridFromEmail" placeholder="e.g. noreply@yourdomain.com" />
+                                    <div class="form-text">Must match a verified Sender Identity in SendGrid.</div>
+                                </div>
+                                <div class="col-12">
                                     <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
                                 </div>
                             </div>
@@ -360,7 +365,7 @@
     const string RKSettings = "Current";
 
     string? ServerName; string? AppPassword; string? SpamhausKey;
-    string? SendGridApiKey;
+    string? SendGridApiKey; string? SendGridFromEmail;
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
@@ -436,6 +441,7 @@
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
 
                 SendGridApiKey = settings.Value?.GetString("SendGridApiKey");
+                SendGridFromEmail = settings.Value?.GetString("SendGridFromEmail");
 
                 var domainsJson = settings.Value?.GetString("DomainsJson");
                 if (!string.IsNullOrEmpty(domainsJson))
@@ -470,6 +476,7 @@
             {
                 { "ServerName", ServerName },
                 { "SendGridApiKey", SendGridApiKey },
+                { "SendGridFromEmail", SendGridFromEmail },
                 { "DomainsJson", JsonSerializer.Serialize(Domains) },
                 { "EnableSpamFiltering", EnableSpamFiltering },
                 { "EnableSpfCheck", EnableSpfCheck },

@@ -14,6 +14,7 @@ namespace BlazorSMTPForwarderSrv.Models
         public bool EnableDkimCheck { get; set; }
         public bool EnableDmarcCheck { get; set; }
         public string? SendGridApiKey { get; set; }
+        public string? SendGridFromEmail { get; set; }
         public string? DomainsJson { get; set; }
         public bool DoNotSaveMessages { get; set; }
     }

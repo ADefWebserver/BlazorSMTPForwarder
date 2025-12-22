@@ -64,6 +64,7 @@ public class SmtpServerConfiguration
             EnsureProperty("EnableDkimCheck", false);
             EnsureProperty("EnableDmarcCheck", false);
             EnsureProperty("SendGridApiKey", "");
+            EnsureProperty("SendGridFromEmail", "");
             EnsureProperty("DoNotSaveMessages", false);
 
             // Update the table if new properties were added
@@ -82,6 +83,7 @@ public class SmtpServerConfiguration
             model.DoNotSaveMessages = entity.GetBoolean("DoNotSaveMessages") ?? false;
 
             model.SendGridApiKey = entity.GetString("SendGridApiKey");
+            model.SendGridFromEmail = entity.GetString("SendGridFromEmail");
             model.DomainsJson = entity.GetString("DomainsJson");
         }
         catch (Exception ex)

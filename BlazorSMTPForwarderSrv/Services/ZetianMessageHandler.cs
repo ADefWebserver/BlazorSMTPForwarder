@@ -192,7 +192,11 @@ public class ZetianMessageHandler
 
     private async Task ForwardMessageAsync(SendGridClient client, MimeMessage originalMessage, string destination)
     {
-        var fromEmail = new EmailAddress("noreply@" + _smtpServer.ServerName, "Forwarder");
+        var fromEmailAddress = !string.IsNullOrWhiteSpace(_smtpServer.SendGridFromEmail) 
+            ? _smtpServer.SendGridFromEmail 
+            : "noreply@" + _smtpServer.ServerName;
+
+        var fromEmail = new EmailAddress(fromEmailAddress, "Forwarder");
         var toEmail = new EmailAddress(destination);
         var subject = (originalMessage.Subject ?? "No Subject");
         var plainTextContent = originalMessage.TextBody ?? "No text content";
