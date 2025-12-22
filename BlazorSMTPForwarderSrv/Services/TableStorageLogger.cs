@@ -9,10 +9,12 @@ namespace BlazorSMTPForwarderSrv.Services;
 public class TableStorageLogger
 {
     private readonly TableClient _tableClient;
+    private readonly TableServiceClient _tableServiceClient;
     private readonly ILogger<TableStorageLogger> _logger;
 
     public TableStorageLogger(TableServiceClient tableServiceClient, ILogger<TableStorageLogger> logger)
     {
+        _tableServiceClient = tableServiceClient;
         _tableClient = tableServiceClient.GetTableClient("serverlogs");
         _tableClient.CreateIfNotExists();
         _logger = logger;
@@ -68,7 +70,7 @@ public class TableStorageLogger
     {
         try
         {
-            var spamTableClient = _tableClient.ServiceClient.GetTableClient("spamlogs");
+            var spamTableClient = _tableServiceClient.GetTableClient("spamlogs");
             await spamTableClient.CreateIfNotExistsAsync();
             await spamTableClient.AddEntityAsync(spamLog);
         }

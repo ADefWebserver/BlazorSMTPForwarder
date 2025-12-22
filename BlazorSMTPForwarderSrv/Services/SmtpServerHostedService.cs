@@ -164,7 +164,7 @@ public class SmtpServerHostedService : IHostedService, IDisposable
                     RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks).ToString("d19"),
                     Timestamp = DateTimeOffset.UtcNow,
                     SessionId = e.Session.Properties.TryGetValue("SessionId", out var sid) ? sid?.ToString() : null,
-                    IP = e.Session.RemoteEndPoint.Address.ToString(),
+                    IP = (e.Session.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "Unknown",
                     From = e.Session.Properties.TryGetValue("MailFrom", out var from) ? from?.ToString() : null,
                     To = e.Session.Properties.TryGetValue("RcptTo", out var to) ? to?.ToString() : null,
                 };
