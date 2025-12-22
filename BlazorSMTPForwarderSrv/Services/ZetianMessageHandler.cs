@@ -41,7 +41,7 @@ public class ZetianMessageHandler
         _blobServiceClient = blobServiceClient;
     }
 
-    public async Task HandleMessageAsync(object sender, MessageEventArgs e)
+    public async Task HandleMessageAsync(object? sender, MessageEventArgs e)
     {
         _smtpServer = _smtpServerConfiguration.LoadSettingsAsync().GetAwaiter().GetResult();
 

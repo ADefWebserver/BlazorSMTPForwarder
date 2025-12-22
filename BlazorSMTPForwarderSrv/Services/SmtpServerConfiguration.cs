@@ -45,7 +45,7 @@ public class SmtpServerConfiguration
             }
             else
             {
-                entity = response.Value;
+                entity = response.Value!;
             }
 
             // Helper to ensure property exists
