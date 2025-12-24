@@ -1,4 +1,5 @@
 # BlazorSMTPForwarder
+### Forward unlimited domains through SendGrid
 ## Also see: [https://github.com/ADefWebserver/BlazorSMTPServer](https://github.com/ADefWebserver/BlazorSMTPServer)
 
 <img width="562" height="515" alt="image" src="https://github.com/user-attachments/assets/89bfb145-b21c-4e3f-b575-d8573b9d54dc" />
