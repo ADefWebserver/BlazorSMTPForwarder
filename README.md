@@ -1,6 +1,8 @@
 # BlazorSMTPForwarder
 ## Also see: [https://github.com/ADefWebserver/BlazorSMTPServer](https://github.com/ADefWebserver/BlazorSMTPServer)
 
+<img width="562" height="515" alt="image" src="https://github.com/user-attachments/assets/89bfb145-b21c-4e3f-b575-d8573b9d54dc" />
+
 <img width="777" height="593" alt="image" src="https://github.com/user-attachments/assets/1f38dc5d-14f1-4008-ae25-b1b978446048" />
 
 <img width="515" height="402" alt="image" src="https://github.com/user-attachments/assets/6b7e9af3-cf3f-49c4-9eca-43ee332bf729" />
