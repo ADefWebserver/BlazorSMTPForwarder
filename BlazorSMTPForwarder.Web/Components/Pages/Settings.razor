@@ -570,13 +570,13 @@
             var result = await lookup.QueryAsync(domain.DomainName, QueryType.MX);
             var record = result.Answers.MxRecords().OrderBy(x => x.Preference).FirstOrDefault();
 
-            if (record != null && string.Equals(record.Exchange, ServerName, StringComparison.OrdinalIgnoreCase))
+            if (record != null && string.Equals(record.Exchange, (ServerName + "."), StringComparison.OrdinalIgnoreCase))
             {
                 await DialogService.Alert($"MX record for {domain.DomainName} is correct ({record.Exchange}).", "DNS Check");
             }
             else
             {
-                var expected = string.IsNullOrWhiteSpace(ServerName) ? "[Local Domain not set]" : ServerName;
+                var expected = string.IsNullOrWhiteSpace(ServerName) ? "[Local Domain not set]" : (ServerName + ".");
                 await DialogService.Alert($"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {expected}", "DNS Check");
             }
         }

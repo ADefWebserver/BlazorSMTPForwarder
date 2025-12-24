@@ -160,6 +160,11 @@ public class ZetianMessageHandler
                 await _tableLogger.LogErrorAsync("Failed to save message to blob storage.", ex, nameof(ZetianMessageHandler));
             }
         }
+        else
+        {
+            _logger.LogInformation("No local recipients found. Message will not be processed.");
+            await _tableLogger.LogInformationAsync("No local recipients found. Message will not be processed.", nameof(ZetianMessageHandler));
+        }
     }
 
     private bool IsLocalRecipient(string address)
