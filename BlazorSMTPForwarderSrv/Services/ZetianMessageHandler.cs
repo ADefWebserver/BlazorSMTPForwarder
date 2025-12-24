@@ -89,9 +89,9 @@ public class ZetianMessageHandler
                                 try
                                 {
                                     var mimeMessage = MimeMessage.Load(stream);
-                                    metadata["Subject"] = mimeMessage.Subject ?? "(no subject)";
-                                    metadata["From"] = mimeMessage.From?.ToString() ?? "";
-                                    metadata["RecipientUser"] = $"{userName}@{domain}";
+                                    metadata["Subject"] = SanitizeHeader(mimeMessage.Subject ?? "(no subject)");
+                                    metadata["From"] = SanitizeHeader(mimeMessage.From?.ToString() ?? "");
+                                    metadata["RecipientUser"] = SanitizeHeader($"{userName}@{domain}");
                                 }
                                 catch (Exception ex)
                                 {
@@ -165,6 +165,12 @@ public class ZetianMessageHandler
             _logger.LogInformation("No local recipients found. Message will not be processed.");
             await _tableLogger.LogInformationAsync("No local recipients found. Message will not be processed.", nameof(ZetianMessageHandler));
         }
+    }
+
+    public string SanitizeHeader(string input)
+    {
+        // Regex to replace anything that isn't standard ASCII (32-127)
+        return System.Text.RegularExpressions.Regex.Replace(input, @"[^\u0020-\u007F]", string.Empty);
     }
 
     private bool IsLocalRecipient(string address)
