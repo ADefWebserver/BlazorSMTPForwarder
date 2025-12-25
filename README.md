@@ -32,9 +32,6 @@
 *   **Secure Access**  
     The web administration interface is protected by a configurable application password to prevent unauthorized access.
 
-*   **Deployment Ready**  
-    *   **Docker Support:** Includes a `Dockerfile## Features
-
 <img width="777" height="593" alt="image" src="https://github.com/user-attachments/assets/1f38dc5d-14f1-4008-ae25-b1b978446048" />
 
 <img width="708" height="382" alt="image" src="https://github.com/user-attachments/assets/446ed393-7721-4ca9-9559-7a506c8e982c" />
