@@ -66,6 +66,7 @@ public class SmtpServerConfiguration
             EnsureProperty("SendGridApiKey", "");
             EnsureProperty("SendGridFromEmail", "");
             EnsureProperty("DoNotSaveMessages", false);
+            EnsureProperty("EnableSpamFiltering", false);
 
             // Update the table if new properties were added
             if (needsUpdate)

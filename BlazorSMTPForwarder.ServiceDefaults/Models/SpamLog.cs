@@ -18,4 +18,5 @@ public class SpamLog : ITableEntity
     public string? Subject { get; set; }
     public string? BlobPath { get; set; }
     public string? IP { get; set; }
+    public string? DetectionReason { get; set; }
 }

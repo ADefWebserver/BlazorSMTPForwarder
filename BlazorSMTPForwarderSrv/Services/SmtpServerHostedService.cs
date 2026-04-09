@@ -124,6 +124,14 @@ public class SmtpServerHostedService : IHostedService, IDisposable
                     var msg = $"Domain '{domain.DomainName}' has been configured, and is not a catch all, but, no email forwarding is specified.";
                     await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
                 }
+
+                if (domain.CatchAll.Type == CatchAllType.Forward
+                    && string.IsNullOrEmpty(domain.CatchAll.ForwardToEmail))
+                {
+                    var msg = $"Domain '{domain.DomainName}' has Catch-All set to Forward "
+                            + "but no forward-to email is specified.";
+                    await _tableLogger.LogErrorAsync(msg, null, nameof(SmtpServerHostedService));
+                }
             }
         }
 
@@ -137,39 +145,100 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         // Configure Anti-Spam
         _smtpServer.AddAntiSpam(spamBuilder =>
         {
-            if (settings.EnableSpfCheck) spamBuilder.EnableSpf();
-            if (settings.EnableDkimCheck) spamBuilder.EnableDkim();
-            if (settings.EnableDmarcCheck) spamBuilder.EnableDmarc();
-            
+            if (settings.EnableSpfCheck)
+            {
+                spamBuilder.EnableSpf();
+                _logger.LogInformation("Anti-spam: SPF check enabled.");
+            }
+            if (settings.EnableDkimCheck)
+            {
+                spamBuilder.EnableDkim();
+                _logger.LogInformation("Anti-spam: DKIM check enabled.");
+            }
+            if (settings.EnableDmarcCheck)
+            {
+                spamBuilder.EnableDmarc();
+                _logger.LogInformation("Anti-spam: DMARC check enabled.");
+            }
+
             if (settings.EnableSpamFiltering)
             {
-                var rblDomain = !string.IsNullOrEmpty(settings.SpamhausKey) 
-                    ? $"{settings.SpamhausKey}.zen.dq.spamhaus.net" 
+                var rblDomain = !string.IsNullOrEmpty(settings.SpamhausKey)
+                    ? $"{settings.SpamhausKey}.zen.dq.spamhaus.net"
                     : "zen.spamhaus.org";
-                
+
                 spamBuilder.EnableRbl(rblDomain);
+                _logger.LogInformation(
+                    "Anti-spam: RBL check enabled with domain {RblDomain}.",
+                    rblDomain);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "Anti-spam: Spam filtering (RBL) is disabled.");
             }
         });
+
+        await _tableLogger.LogInformationAsync(
+            $"Anti-spam configured: SPF={settings.EnableSpfCheck}, "
+            + $"DKIM={settings.EnableDkimCheck}, "
+            + $"DMARC={settings.EnableDmarcCheck}, "
+            + $"RBL={settings.EnableSpamFiltering}",
+            nameof(SmtpServerHostedService));
 
         // Wire up Message Handler
         _smtpServer.MessageReceived += async (s, e) => await _messageHandler.HandleMessageAsync(s, e);
 
         _smtpServer.SessionCompleted += async (s, e) =>
         {
+            var ip = (e.Session.RemoteEndPoint as IPEndPoint)?.Address.ToString()
+                     ?? "Unknown";
+
             if (e.Session.Properties.ContainsKey("SpamDetected"))
             {
+                // Build a reason string from available session properties
+                var reasons = new List<string>();
+                if (e.Session.Properties.ContainsKey("SpfResult"))
+                    reasons.Add($"SPF={e.Session.Properties["SpfResult"]}");
+                if (e.Session.Properties.ContainsKey("DkimResult"))
+                    reasons.Add($"DKIM={e.Session.Properties["DkimResult"]}");
+                if (e.Session.Properties.ContainsKey("DmarcResult"))
+                    reasons.Add($"DMARC={e.Session.Properties["DmarcResult"]}");
+                if (e.Session.Properties.ContainsKey("RblResult"))
+                    reasons.Add($"RBL={e.Session.Properties["RblResult"]}");
+
+                var reasonStr = reasons.Count > 0
+                    ? string.Join("; ", reasons)
+                    : "Unknown (SpamDetected flag set but no detail properties)";
+
+                _logger.LogWarning(
+                    "Spam detected from {IP}. Reason: {Reason}", ip, reasonStr);
+
                 var spamLog = new SpamLog
                 {
                     PartitionKey = "Spam",
-                    RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks).ToString("d19"),
+                    RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks)
+                             .ToString("d19"),
                     Timestamp = DateTimeOffset.UtcNow,
-                    SessionId = e.Session.Properties.TryGetValue("SessionId", out var sid) ? sid?.ToString() : null,
-                    IP = (e.Session.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "Unknown",
-                    From = e.Session.Properties.TryGetValue("MailFrom", out var from) ? from?.ToString() : null,
-                    To = e.Session.Properties.TryGetValue("RcptTo", out var to) ? to?.ToString() : null,
+                    SessionId = e.Session.Properties.TryGetValue("SessionId", out var sid)
+                                ? sid?.ToString() : null,
+                    IP = ip,
+                    From = e.Session.Properties.TryGetValue("MailFrom", out var from)
+                           ? from?.ToString() : null,
+                    To = e.Session.Properties.TryGetValue("RcptTo", out var to)
+                         ? to?.ToString() : null,
+                    DetectionReason = reasonStr,
                 };
 
                 await _tableLogger.LogSpamAsync(spamLog);
+                await _tableLogger.LogInformationAsync(
+                    $"Spam logged from {ip}: {reasonStr}",
+                    nameof(SmtpServerHostedService));
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Session completed for {IP} - no spam detected.", ip);
             }
         };
 

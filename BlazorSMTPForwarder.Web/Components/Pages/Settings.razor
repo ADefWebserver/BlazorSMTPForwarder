@@ -135,8 +135,6 @@
                                         </div>
                                     </div>
 
-                                    @if (domain.CatchAll.Type == CatchAllType.None)
-                                    {
                                     <div class="col-12">
                                         <h6>Forwarding Rules</h6>
                                         <table class="table table-sm">
@@ -160,7 +158,6 @@
                                         </table>
                                         <RadzenButton Text="Add Rule" Size="ButtonSize.Small" Click="@(() => domain.ForwardingRules.Add(new EmailForwardingRule()))" />
                                     </div>
-                                    }
                                 </div>
                             </div>
                         </div>
@@ -273,6 +270,7 @@
                                 <RadzenDataGridColumn TItem="SpamLog" Property="To" Title="To" Width="200px" />
                                 <RadzenDataGridColumn TItem="SpamLog" Property="Subject" Title="Subject" />
                                 <RadzenDataGridColumn TItem="SpamLog" Property="IP" Title="IP" Width="120px" />
+                                <RadzenDataGridColumn TItem="SpamLog" Property="DetectionReason" Title="Reason" />
                             </Columns>
                         </RadzenDataGrid>
                         @if (IsLoadingSpam && SpamLogs.Count > 0)

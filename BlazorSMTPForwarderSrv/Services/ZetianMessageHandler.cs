@@ -127,21 +127,70 @@ public class ZetianMessageHandler
                                 var domainConfig = domains.FirstOrDefault(d => recipient.Address.EndsWith("@" + d.DomainName, StringComparison.OrdinalIgnoreCase));
                                 if (domainConfig != null)
                                 {
-                                    if (domainConfig.CatchAll.Type == CatchAllType.None)
+                                    // 1. Always check forwarding rules first
+                                    var rule = domainConfig.ForwardingRules
+                                        .FirstOrDefault(r => r.IncomingEmail
+                                            .Equals(recipient.Address, StringComparison.OrdinalIgnoreCase));
+
+                                    if (rule != null)
                                     {
-                                        var rule = domainConfig.ForwardingRules.FirstOrDefault(r => r.IncomingEmail.Equals(recipient.Address, StringComparison.OrdinalIgnoreCase));
-                                        if (rule != null)
-                                        {
-                                            _logger.LogInformation("Forwarding message for {Recipient} to {Destination}", recipient.Address, rule.DestinationEmail);
-                                            await _tableLogger.LogInformationAsync($"Forwarding message for {recipient.Address} to {rule.DestinationEmail}", nameof(ZetianMessageHandler));
-                                            await ForwardMessageAsync(sendGridClient, mimeMessage, rule.DestinationEmail);
-                                        }
+                                        _logger.LogInformation(
+                                            "Forwarding message for {Recipient} to {Destination}",
+                                            recipient.Address, rule.DestinationEmail);
+                                        await _tableLogger.LogInformationAsync(
+                                            $"Forwarding message for {recipient.Address} to {rule.DestinationEmail}",
+                                            nameof(ZetianMessageHandler));
+                                        await ForwardMessageAsync(
+                                            sendGridClient, mimeMessage, rule.DestinationEmail);
                                     }
-                                    else if (domainConfig.CatchAll.Type == CatchAllType.Forward && !string.IsNullOrEmpty(domainConfig.CatchAll.ForwardToEmail))
+                                    else
                                     {
-                                         _logger.LogInformation("Catch-all forwarding message for {Recipient} to {Destination}", recipient.Address, domainConfig.CatchAll.ForwardToEmail);
-                                         await _tableLogger.LogInformationAsync($"Catch-all forwarding message for {recipient.Address} to {domainConfig.CatchAll.ForwardToEmail}", nameof(ZetianMessageHandler));
-                                         await ForwardMessageAsync(sendGridClient, mimeMessage, domainConfig.CatchAll.ForwardToEmail);
+                                        // 2. No rule matched — apply catch-all action
+                                        switch (domainConfig.CatchAll.Type)
+                                        {
+                                            case CatchAllType.Forward
+                                                when !string.IsNullOrEmpty(domainConfig.CatchAll.ForwardToEmail):
+                                                _logger.LogInformation(
+                                                    "Catch-all forwarding message for {Recipient} to {Destination}",
+                                                    recipient.Address,
+                                                    domainConfig.CatchAll.ForwardToEmail);
+                                                await _tableLogger.LogInformationAsync(
+                                                    $"Catch-all forwarding message for {recipient.Address} "
+                                                    + $"to {domainConfig.CatchAll.ForwardToEmail}",
+                                                    nameof(ZetianMessageHandler));
+                                                await ForwardMessageAsync(
+                                                    sendGridClient, mimeMessage,
+                                                    domainConfig.CatchAll.ForwardToEmail);
+                                                break;
+
+                                            case CatchAllType.Reject:
+                                                _logger.LogInformation(
+                                                    "Rejecting message for unmatched recipient {Recipient}",
+                                                    recipient.Address);
+                                                await _tableLogger.LogInformationAsync(
+                                                    $"Rejecting message for unmatched recipient {recipient.Address}",
+                                                    nameof(ZetianMessageHandler));
+                                                break;
+
+                                            case CatchAllType.Delete:
+                                                _logger.LogInformation(
+                                                    "Deleting message for unmatched recipient {Recipient}",
+                                                    recipient.Address);
+                                                await _tableLogger.LogInformationAsync(
+                                                    $"Deleting message for unmatched recipient {recipient.Address}",
+                                                    nameof(ZetianMessageHandler));
+                                                break;
+
+                                            case CatchAllType.None:
+                                            default:
+                                                _logger.LogInformation(
+                                                    "No forwarding rule and no catch-all for {Recipient}",
+                                                    recipient.Address);
+                                                await _tableLogger.LogInformationAsync(
+                                                    $"No forwarding rule and no catch-all for {recipient.Address}",
+                                                    nameof(ZetianMessageHandler));
+                                                break;
+                                        }
                                     }
                                 }
                             }
