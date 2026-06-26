@@ -52,7 +52,7 @@ public class BlobEmailService
         try
         {
             var container = await GetOrCreateContainerAsync(ct);
-            await foreach (var blob in container.GetBlobsAsync(prefix: null, cancellationToken: ct))
+            await foreach (var blob in container.GetBlobsAsync(traits: BlobTraits.None, states: BlobStates.None, prefix: null, cancellationToken: ct))
             {
                 var name = blob.Name;
                 var parts = name.Split('/');

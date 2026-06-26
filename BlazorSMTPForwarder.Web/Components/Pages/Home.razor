@@ -345,7 +345,7 @@
 
         foreach (var attachment in message.BodyParts.OfType<MimePart>())
         {
-            if (attachment.ContentId != null || (attachment.ContentType.MediaType == "image" && attachment.FileName != null))
+            if (attachment.Content != null && (attachment.ContentId != null || (attachment.ContentType.MediaType == "image" && attachment.FileName != null)))
             {
                 using var ms = new MemoryStream();
                 attachment.Content.DecodeTo(ms);
@@ -377,7 +377,7 @@
         }
 
         await DialogService.OpenAsync<ComposeEmailDialog>("New Message",
-               new Dictionary<string, object>() {
+               new Dictionary<string, object?>() {
                    { "DefaultFrom", defaultFrom ?? "" }
                },
                new DialogOptions() { Width = "700px", Height = "620px", Resizable = true, Draggable = true });
@@ -451,7 +451,7 @@
                    (_currentBody ?? "").Replace("\n", "\n> ");
 
         await DialogService.OpenAsync<ComposeEmailDialog>("Reply",
-               new Dictionary<string, object>() {
+               new Dictionary<string, object?>() {
                    { "DefaultTo", fromAddress },
                    { "DefaultFrom", toAddress }, // Reply from the recipient of the original
                    { "DefaultSubject", subject },

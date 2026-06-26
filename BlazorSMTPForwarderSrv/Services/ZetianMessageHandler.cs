@@ -277,7 +277,7 @@ public class ZetianMessageHandler
         // Attachments
         foreach (var attachment in originalMessage.Attachments)
         {
-            if (attachment is MimePart part)
+            if (attachment is MimePart part && part.Content != null)
             {
                 using var stream = new MemoryStream();
                 await part.Content.DecodeToAsync(stream);
@@ -293,7 +293,7 @@ public class ZetianMessageHandler
             if (!string.IsNullOrEmpty(contentId))
             {
                 var cleanContentId = contentId.Trim('<', '>');
-                if (!string.IsNullOrEmpty(htmlContent) && htmlContent.Contains($"cid:{cleanContentId}"))
+                if (part.Content != null && !string.IsNullOrEmpty(htmlContent) && htmlContent.Contains($"cid:{cleanContentId}"))
                 {
                      using var stream = new MemoryStream();
                      await part.Content.DecodeToAsync(stream);
