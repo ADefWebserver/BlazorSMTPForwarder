@@ -12,13 +12,10 @@
 		<PackageReference Include="Aspire.Azure.Storage.Blobs" Version="13.4.6" />
 		<!-- Remove direct Azure.Data.Tables to rely on transitive latest (12.11.0) -->
 		<PackageReference Include="Azure.Storage.Blobs" Version="12.29.1" />
-		<PackageReference Include="Blazorise" Version="2.2.1" />
-		<PackageReference Include="Blazorise.Bootstrap5" Version="2.2.1" />
-		<PackageReference Include="Blazorise.Icons.FontAwesome" Version="2.2.1" />
+		<PackageReference Include="BlazorDX.Components" Version="0.2.0" />
 		<PackageReference Include="DnsClient" Version="1.8.0" />
 		<PackageReference Include="MimeKit" Version="4.17.0" />
 		<PackageReference Include="Nager.Dns" Version="2.1.0" />
-		<PackageReference Include="Radzen.Blazor" Version="11.0.4" />
 	</ItemGroup>
 
   <ItemGroup>

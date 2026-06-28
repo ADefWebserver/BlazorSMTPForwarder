@@ -1,50 +1,48 @@
-@using Radzen
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Web
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Net.Mail
 @using System.Net
 @using System.ComponentModel.DataAnnotations
 @using Azure.Data.Tables
 @using Azure
-@using Azure.Data.Tables.Models
 @using System.Text.Json
 @using BlazorSMTPForwarder.ServiceDefaults.Models
 
-<div class="rz-p-2">
-    <RadzenNotification />
-
+<div class="p-2">
     @if (!string.IsNullOrWhiteSpace(_settingsError))
     {
-        <div class="rz-text-danger rz-mb-2">@_settingsError</div>
+        <DxAlert Severity="error">@_settingsError</DxAlert>
     }
 
     <EditForm Model="@_model" OnValidSubmit="HandleValidSubmitAsync">
         <DataAnnotationsValidator />
-        <div class="rz-grid rz-g-2">
-            <div>
-                <RadzenLabel Text="From" />
-                <RadzenTextBox @bind-Value="_model.From" Style="width:100%" />
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">From</label>
+                <DxTextBox @bind-Value="_model.From" />
             </div>
-            <div>
-                <RadzenLabel Text="To" />
+            <div class="col-12">
+                <label class="form-label">To</label>
                 <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <RadzenTextBox @bind-Value="ToUser" Change="@UpdateToAddress" Style="flex: 1;" Placeholder="User" />
+                    <DxTextBox Value="@ToUser" ValueChanged="@((string v) => { ToUser = v; UpdateToAddress(); })" Placeholder="User" />
                     <span>@("@")</span>
-                    <RadzenDropDown Data="@Domains" TextProperty="DomainName" ValueProperty="DomainName" @bind-Value="ToDomain" Change="@UpdateToAddress" Style="flex: 1;" Placeholder="Select Domain" />
+                    <DxSelect TValue="string" Value="@ToDomain" Items="_domainOptions"
+                              ValueChanged="@((string v) => { ToDomain = v; UpdateToAddress(); })" />
                 </div>
                 <ValidationMessage For="@(() => _model.To)" />
             </div>
-            <div style="grid-column: 1 / -1;">
-                <RadzenLabel Text="Subject" />
-                <RadzenTextBox @bind-Value="_model.Subject" Style="width:100%" />
+            <div class="col-12">
+                <label class="form-label">Subject</label>
+                <DxTextBox @bind-Value="_model.Subject" />
             </div>
-            <div style="grid-column: 1 / -1;">
-                <RadzenLabel Text="Body" />
-                <RadzenTextArea @bind-Value="_model.Body" Rows="8" Style="width:100%" />
+            <div class="col-12">
+                <label class="form-label">Body</label>
+                <DxTextArea @bind-Value="_model.Body" />
             </div>
-            <div class="rz-d-flex rz-justify-content-end rz-g-2" style="grid-column: 1 / -1;">
-                <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@Cancel" />
-                <RadzenButton ButtonStyle="ButtonStyle.Primary" Disabled="@_sending" ButtonType="Radzen.ButtonType.Submit" Text="@(_sending ? "Sending..." : "Send")" />
+            <div class="col-12 d-flex justify-content-end gap-2">
+                <DxButton Variant="secondary" Text="Cancel" OnClick="@(async (MouseEventArgs e) => await Cancel())" />
+                <DxButton Variant="primary" Text="@(_sending ? "Sending..." : "Send")" OnClick="@(async (MouseEventArgs e) => await SubmitForm())" />
             </div>
         </div>
     </EditForm>
@@ -55,11 +53,10 @@
     [Parameter] public string? DefaultFrom { get; set; }
     [Parameter] public string? DefaultSubject { get; set; }
     [Parameter] public string? DefaultBody { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
 
-    [Inject] public DialogService DialogService { get; set; } = default!;
-    [Inject] public NotificationService NotificationService { get; set; } = default!;
     [Inject] public TableServiceClient TableServiceClient { get; set; } = default!;
-    [Inject] public NavigationManager Nav { get; set; } = default!;
+    [Inject] public ToastService ToastService { get; set; } = default!;
 
     private class ComposeModel
     {
@@ -80,6 +77,7 @@
     private string? _settingsError;
 
     private List<DomainConfiguration> Domains = new();
+    private IReadOnlyList<ListOption<string>> _domainOptions = Array.Empty<ListOption<string>>();
     private string ToUser = "";
     private string ToDomain = "";
 
@@ -103,7 +101,9 @@
                     catch { Domains = new(); }
                 }
             }
-            
+
+            _domainOptions = Domains.Select(d => new ListOption<string>(d.DomainName, d.DomainName, false)).ToList();
+
             if (string.IsNullOrEmpty(ToDomain) && Domains.Any())
             {
                 ToDomain = Domains.First().DomainName;
@@ -158,26 +158,20 @@
         }
     }
 
-    private Task Cancel()
+    private async Task Cancel()
     {
-        DialogService.Close(false);
-        return Task.CompletedTask;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task SubmitForm()
+    {
+        if (_sending) return;
+        await SendAsync();
     }
 
     private async Task HandleValidSubmitAsync(EditContext _)
     {
         await SendAsync();
-    }
-
-    private void ShowError(string message)
-    {
-        NotificationService.Notify(new NotificationMessage
-        {
-            Severity = NotificationSeverity.Error,
-            Summary = "Error",
-            Detail = message,
-            Duration = 5000
-        });
     }
 
     private string ResolveSmtpHost()
@@ -195,7 +189,6 @@
             var table = TableServiceClient.GetTableClient(SettingsTableName);
             var entityResponse = await table.GetEntityAsync<TableEntity>(PartitionKey, RowKey);
             var entity = entityResponse.Value;
-            // Prefer PortsJson
             if (entity.TryGetValue("PortsJson", out var portsJsonObj) && portsJsonObj is string portsJson && !string.IsNullOrWhiteSpace(portsJson))
             {
                 try
@@ -216,7 +209,7 @@
         {
             _settingsError = $"Warning: Could not read SMTP port from table storage, falling back to 2525. {ex.Message}";
         }
-        return 25; // fallback development port
+        return 25;
     }
 
     private async Task SendAsync()
@@ -224,7 +217,6 @@
         if (string.IsNullOrWhiteSpace(_model.To))
         {
             _settingsError = "Recipient (To) is required.";
-            ShowError(_settingsError);
             return;
         }
 
@@ -232,7 +224,6 @@
         {
             _sending = true;
 
-            // Resolve host, port and credentials from Table Storage similar to SmtpTest
             var smtpHost = ResolveSmtpHost();
             var port = await GetFirstPortAsync();
 
@@ -251,12 +242,12 @@
             message.To.Add(_model.To);
 
             await client.SendMailAsync(message);
-            DialogService.Close(true);
+            ToastService.Show("Message sent successfully.", "success");
+            await OnClose.InvokeAsync();
         }
         catch (Exception ex)
         {
             _settingsError = $"Failed to send: {ex.Message}";
-            ShowError(_settingsError);
         }
         finally
         {

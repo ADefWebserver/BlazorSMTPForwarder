@@ -1,0 +1,47 @@
+@using BlazorSMTPForwarder.ServiceDefaults.Models
+@using BlazorSMTPForwarder.Web.GridRows
+
+<div class="p-3">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="m-0">Server Logs &mdash; Page @PageNumber (@(Rows?.Count ?? 0) rows)</h5>
+        <div class="d-flex gap-2">
+            <DxButton Variant="primary" Text="Refresh" OnClick="@(async (MouseEventArgs e) => await RefreshClicked.InvokeAsync())" />
+            <DxButton Variant="secondary" Text="◀ Previous" Disabled="@(!HasPrevious || IsLoading)"
+                      OnClick="@(async (MouseEventArgs e) => await PreviousClicked.InvokeAsync())" />
+            <DxButton Variant="secondary" Text="Next ▶" Disabled="@(!HasNext || IsLoading)"
+                      OnClick="@(async (MouseEventArgs e) => await NextClicked.InvokeAsync())" />
+        </div>
+    </div>
+
+    @if (IsLoading && (Rows == null || Rows.Count == 0))
+    {
+        <div class="text-center p-3"><DxSpinner /></div>
+    }
+    else if (Rows == null || Rows.Count == 0)
+    {
+        <div class="text-muted">No logs found.</div>
+    }
+    else
+    {
+        <DxDataGrid @key="@PageNumber" TRow="ServerLogRow" Items="Rows" Accessor="_logAccessor"
+                    Filterable="true" ShowExport="true"
+                    ExportFileName="server-logs.csv" ViewportHeight="520" />
+        @if (IsLoading)
+        {
+            <div class="mt-2 text-muted">Loading...</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<ServerLogRow>? Rows { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public int PageNumber { get; set; } = 1;
+    [Parameter] public bool HasPrevious { get; set; }
+    [Parameter] public bool HasNext { get; set; }
+    [Parameter] public EventCallback RefreshClicked { get; set; }
+    [Parameter] public EventCallback PreviousClicked { get; set; }
+    [Parameter] public EventCallback NextClicked { get; set; }
+
+    private readonly ServerLogRowGridAccessor _logAccessor = new();
+}

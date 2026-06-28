@@ -3,7 +3,9 @@ using BlazorSMTPForwarder.Web.Components;
 using BlazorSMTPForwarder.Web.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Components.Authorization;
-using Radzen;
+using BlazorDX.Components;
+using BlazorDX.Compute;
+using BlazorDX.Interop;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,8 +30,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 
-// Add Radzen services
-builder.Services.AddRadzenComponents();
+// Add BlazorDX services
+builder.Services.AddBlazorDXCompute();
+builder.Services.AddBlazorDXInterop();
+builder.Services.AddScoped<ToastService>();
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

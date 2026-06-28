@@ -4,358 +4,30 @@
 @using System.Text.Json.Nodes
 @using BlazorSMTPForwarder.ServiceDefaults.Models
 @using BlazorSMTPForwarder.Web.Components.Dialogs
-@using Nager.Dns
-@using Nager.Dns.Models
+@using BlazorSMTPForwarder.Web.GridRows
 @using DnsClient
-@using Org.BouncyCastle.Crypto
-@using Org.BouncyCastle.OpenSsl
-@using Org.BouncyCastle.Security
-@using Org.BouncyCastle.Crypto.Generators
 @using System.IO
 @inject TableServiceClient Tables
 @inject ILogger<Settings> Log
 @inject IConfiguration Config
 @inject IWebHostEnvironment Env
-@inject DialogService DialogService
-@inject IHttpClientFactory HttpClientFactory
+@inject ToastService ToastService
 @inject BlazorSMTPForwarder.Web.Services.LogService LogService
 
 <div>
     <h1 class="h3 mb-0">Settings</h1>
     <br />
-    <RadzenTabs RenderMode="TabRenderMode.Client">
-        <Tabs>
-            <RadzenTabsItem Text="General">
-                <div class="row">
-                    <div class="col-md-8">
-                        @if (IsLoading)
-                        {
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        }
-                        else
-                        {
-                            if (Saved)
-                            {
-                                <div class="alert alert-success">Settings saved successfully.</div>
-                            }
-                            if (Error != null)
-                            {
-                                <div class="alert alert-danger">@Error</div>
-                            }
-
-                            <div class="card shadow-sm mb-4">
-                                <div class="card-body">                                    
-                                    <div class="row g-3">
-                                        <div class="col-12 col-md-6">
-                                            <label class="form-label">Server Domain</label>
-                                            <input class="form-control" @bind="ServerName" />
-                                        </div>
-                                        <div class="col-12 col-md-6 d-flex align-items-end">
-                                            <div class="form-check form-switch">
-                                                <input class="form-check-input" type="checkbox" id="doNotSaveMessages" @bind="DoNotSaveMessages" />
-                                                <label class="form-check-label" for="doNotSaveMessages">Do Not Save Messages to Blob Storage</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card shadow-sm mb-4">
-                                <div class="card-body">
-                                    <form @onsubmit="SaveAsync">
-                                        <div class="row g-3">
-                                            <div class="col-12">
-                                                <label class="form-label" for="appPassword">Website App Access Password</label>
-                                                <div class="input-group">
-                                                    <input id="appPassword" class="form-control"
-                                                           type="@(ShowAppPassword ? "text" : "password")"
-                                                           @bind="AppPassword" placeholder="(no password set)" />
-                                                    <button class="btn btn-outline-secondary" type="button"
-                                                            @onclick="() => ShowAppPassword = !ShowAppPassword">
-                                                        @(ShowAppPassword ? "Hide" : "Show")
-                                                    </button>
-                                                </div>
-                                                <div class="form-text mb-3">
-                                                    Protects access to this UI. Blank means open
-                                                    access. (Stored in appsettings.json)
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </form>
-                                </div>
-                            </div>
-
-                            <div class="mb-3 d-flex gap-2">
-                                <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                                <RadzenButton Text="Reset Server" Click="@RequestServerRestart" ButtonStyle="ButtonStyle.Warning" />
-                            </div>
-                        }
-                    </div>
-                </div>
-            </RadzenTabsItem>
-
-            <RadzenTabsItem Text="Domains">
-                <div class="p-3">
-                    <div class="mb-3">
-                        <RadzenButton Text="Add Domain" Click="@AddDomain" ButtonStyle="ButtonStyle.Success" Icon="add" />
-                    </div>
-
-                    @foreach (var domain in Domains)
-                    {
-                        <div class="card shadow-sm mb-4">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <h5 class="m-0">@domain.DomainName</h5>
-                                <div>
-                                    <RadzenButton Text="Check DNS" Click="@(() => CheckDomainDns(domain))" ButtonStyle="ButtonStyle.Info" Size="ButtonSize.Small" />
-                                    <RadzenButton Icon="delete" Click="@(() => RemoveDomain(domain))" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" />
-                                </div>
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3">
-                                    <div class="col-12">
-                                        <label class="form-label">Domain Name</label>
-                                        <input class="form-control" @bind="domain.DomainName" />
-                                    </div>
-
-                                    <div class="col-12">
-                                        <h6>Catch-All Action</h6>
-                                        <div class="input-group mb-2">
-                                            <select class="form-select" @bind="domain.CatchAll.Type">
-                                                <option value="@CatchAllType.None">[None]</option>
-                                                <option value="@CatchAllType.Reject">Reject</option>
-                                                <option value="@CatchAllType.Delete">Delete</option>
-                                                <option value="@CatchAllType.Forward">Forward</option>
-                                            </select>
-                                            @if (domain.CatchAll.Type == CatchAllType.Forward)
-                                            {
-                                                <input class="form-control" @bind="domain.CatchAll.ForwardToEmail" placeholder="Forward to..." />
-                                            }
-                                        </div>
-                                    </div>
-
-                                    <div class="col-12">
-                                        <h6>Forwarding Rules</h6>
-                                        <table class="table table-sm">
-                                            <thead>
-                                                <tr>
-                                                    <th>Incoming Email</th>
-                                                    <th>Destination Email</th>
-                                                    <th></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var rule in domain.ForwardingRules)
-                                                {
-                                                    <tr>
-                                                        <td><input class="form-control form-control-sm" @bind="rule.IncomingEmail" /></td>
-                                                        <td><input class="form-control form-control-sm" @bind="rule.DestinationEmail" /></td>
-                                                        <td><RadzenButton Icon="delete" Size="ButtonSize.ExtraSmall" ButtonStyle="ButtonStyle.Danger" Click="@(() => domain.ForwardingRules.Remove(rule))" /></td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                        <RadzenButton Text="Add Rule" Size="ButtonSize.Small" Click="@(() => domain.ForwardingRules.Add(new EmailForwardingRule()))" />
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    }
-
-                    <div class="mt-3">
-                        <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                    </div>
-                </div>
-            </RadzenTabsItem>
-
-            <RadzenTabsItem Text="SPAM">
-                <div class="p-3">
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12 col-md-6">
-                                    <label class="form-label" for="spamhausKey">Spamhaus Key</label>
-                                    <div class="input-group">
-                                        <input id="spamhausKey" class="form-control" autocomplete="off"
-                                               type="@(ShowSpamhausKey ? "text" : "password")"
-                                               placeholder="(not set)" @bind-value="SpamhausKey" />
-                                        <button class="btn btn-outline-secondary" type="button"
-                                                @onclick="() => ShowSpamhausKey = !ShowSpamhausKey">
-                                            @(ShowSpamhausKey ? "Hide" : "Show")
-                                        </button>
-                                    </div>
-                                    <div class="form-text">
-                                        Spamhaus DQS Key
-                                    </div>
-                                </div>
-
-                                <div class="col-12">
-                                    <div class="d-flex gap-4 mt-2">
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="enableSpam"
-                                                   @bind="EnableSpamFiltering" />
-                                            <label class="form-check-label" for="enableSpam">
-                                                Enable Spamhaus
-                                                Filtering
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="enableSpf"
-                                                   @bind="EnableSpfCheck" />
-                                            <label class="form-check-label" for="enableSpf">
-                                                Enable SPF
-                                                Check
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="enableDkim"
-                                                   @bind="EnableDkimCheck" />
-                                            <label class="form-check-label" for="enableDkim">
-                                                Enable DKIM
-                                                Check
-                                            </label>
-                                        </div>
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input" type="checkbox" id="enableDmarc"
-                                                   @bind="EnableDmarcCheck" />
-                                            <label class="form-check-label" for="enableDmarc">
-                                                Enable DMARC
-                                                Check
-                                            </label>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="m-0">Spam Logs</h5>
-                        <div class="d-flex gap-2">
-                            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadSpamLogsAsync"
-                                          Size="ButtonSize.Small" Disabled="@IsLoadingSpam" />
-                            @if (_spamHasMore && !IsLoadingSpam)
-                            {
-                                <RadzenButton Icon="add" Text="More" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@LoadMoreSpamLogsAsync" />
-                            }
-                        </div>
-                    </div>
-
-                    @if (IsLoadingSpam && (SpamLogs == null || SpamLogs.Count == 0))
-                    {
-                        <div class="text-center p-3">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
-                    }
-                    else if (SpamLogs == null || !SpamLogs.Any())
-                    {
-                        <div class="text-muted">No spam logs found.</div>
-                    }
-                    else
-                    {
-                        <RadzenDataGrid Data="@SpamLogs" TItem="SpamLog" AllowPaging="true" PageSize="10"
-                                        AllowSorting="true" ColumnWidth="150px">
-                            <Columns>
-                                <RadzenDataGridColumn TItem="SpamLog" Property="Timestamp" Title="Time" Width="160px">
-                                    <Template Context="data">
-                                        @data.Timestamp?.ToLocalTime().ToString("g")
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="SpamLog" Property="From" Title="From" Width="200px" />
-                                <RadzenDataGridColumn TItem="SpamLog" Property="To" Title="To" Width="200px" />
-                                <RadzenDataGridColumn TItem="SpamLog" Property="Subject" Title="Subject" />
-                                <RadzenDataGridColumn TItem="SpamLog" Property="IP" Title="IP" Width="120px" />
-                                <RadzenDataGridColumn TItem="SpamLog" Property="DetectionReason" Title="Reason" />
-                            </Columns>
-                        </RadzenDataGrid>
-                        @if (IsLoadingSpam && SpamLogs.Count > 0)
-                        {
-                            <div class="mt-2 text-muted">Loading more...</div>
-                        }
-                    }
-                </div>
-            </RadzenTabsItem>
-
-            <RadzenTabsItem Text="SendGrid">
-                <div class="p-3">
-                    <div class="card shadow-sm mb-4">
-                        <div class="card-body">
-                            <div class="row g-3">
-                                <div class="col-12">
-                                    <label class="form-label">API Key</label>
-                                    <input class="form-control" @bind="SendGridApiKey" type="password" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">From Email</label>
-                                    <input class="form-control" @bind="SendGridFromEmail" placeholder="e.g. noreply@yourdomain.com" />
-                                    <div class="form-text">Must match a verified Sender Identity in SendGrid.</div>
-                                </div>
-                                <div class="col-12">
-                                    <button class="btn btn-success" @onclick="SaveAsync" disabled="@(Saving || IsLoading)">Save Settings</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </RadzenTabsItem>
-
-            <RadzenTabsItem Text="Logs">
-                <div class="p-3">
-                    <div class="d-flex justify-content-between align-items-center mb-3">
-                        <h5 class="m-0">Server Logs</h5>
-                        <div class="d-flex gap-2">
-                            <RadzenButton Icon="refresh" ButtonStyle="ButtonStyle.Light" Click="@LoadServerLogsAsync"
-                                          Size="ButtonSize.Small" Disabled="@IsLoadingLogs" />
-                            @if (_logsHasMore && !IsLoadingLogs)
-                            {
-                                <RadzenButton Icon="add" Text="More" ButtonStyle="ButtonStyle.Light" Size="ButtonSize.Small" Click="@LoadMoreServerLogsAsync" />
-                            }
-                        </div>
-                    </div>
-
-                    @if (IsLoadingLogs && (ServerLogs == null || ServerLogs.Count == 0))
-                    {
-                        <div class="text-center p-3">
-                            <div class="spinner-border text-primary" role="status">
-                                <span class="visually-hidden">Loading...</span>
-                            </div>
-                        </div>
-                    }
-                    else if (ServerLogs == null || !ServerLogs.Any())
-                    {
-                        <div class="text-muted">No logs found.</div>
-                    }
-                    else
-                    {
-                        <RadzenDataGrid Data="@ServerLogs" TItem="ServerLog" AllowPaging="true" PageSize="20"
-                                        AllowSorting="true" ColumnWidth="150px">
-                            <Columns>
-                                <RadzenDataGridColumn TItem="ServerLog" Property="Timestamp" Title="Time" Width="160px">
-                                    <Template Context="data">
-                                        @data.Timestamp?.ToLocalTime().ToString("g")
-                                    </Template>
-                                </RadzenDataGridColumn>
-                                <RadzenDataGridColumn TItem="ServerLog" Property="Level" Title="Level" Width="100px" />
-                                <RadzenDataGridColumn TItem="ServerLog" Property="Source" Title="Source" Width="200px" />
-                                <RadzenDataGridColumn TItem="ServerLog" Property="Message" Title="Message" />
-                                <RadzenDataGridColumn TItem="ServerLog" Property="Exception" Title="Exception" />
-                            </Columns>
-                        </RadzenDataGrid>
-                        @if (IsLoadingLogs && ServerLogs.Count > 0)
-                        {
-                            <div class="mt-2 text-muted">Loading more...</div>
-                        }
-                    }
-                </div>
-            </RadzenTabsItem>
-        </Tabs>
-    </RadzenTabs>
+    <DxTabs Items="_tabs" @bind-SelectedIndex="_selectedTab" />
 </div>
+
+<!-- DNS Check result dialog -->
+<DxDialog @bind-Open="_dnsDialogOpen">
+    <h4>@_dnsDialogTitle</h4>
+    <p>@_dnsDialogMessage</p>
+    <div class="d-flex justify-content-end">
+        <DxButton Variant="primary" Text="OK" OnClick="@((MouseEventArgs e) => { _dnsDialogOpen = false; })" />
+    </div>
+</DxDialog>
 
 @code {
     const string TableName = "SMTPSettings";
@@ -367,17 +39,56 @@
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
-    bool IsLoading; bool Saving; bool ShowSpamhausKey; bool ShowAppPassword;
+    bool IsLoading; bool Saving;
 
     bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck;
     bool DoNotSaveMessages;
 
+    // DNS dialog state
+    bool _dnsDialogOpen;
+    string _dnsDialogTitle = "";
+    string _dnsDialogMessage = "";
+
     // Spam Log Logic
     List<SpamLog>? SpamLogs;
+    IReadOnlyList<SpamLogRow> _spamRows = Array.Empty<SpamLogRow>();
     bool IsLoadingSpam;
-    string? _spamContinuationToken; // paging token
-    bool _spamHasMore; // more pages flag
-    readonly int _spamPageSize = 200; // page size for table query
+    string? _spamContinuationToken;
+    bool _spamHasMore;
+    readonly int _spamPageSize = 200;
+
+    // Server Log Logic
+    IReadOnlyList<ServerLogRow> _logRows = Array.Empty<ServerLogRow>();
+    bool IsLoadingLogs;
+    // Cursor-based paging: _logPageStarts[i] is the start cursor (exclusive RowKey) for page i.
+    readonly List<string?> _logPageStarts = new() { null };
+    int _logPageIndex;
+    bool _logsHasNext;
+    readonly int _logsPageSize = 100;
+
+    int _selectedTab;
+    private IReadOnlyList<TabItem> _tabs => new List<TabItem>
+    {
+        new("General", @<GeneralSettingsTab ServerName="@ServerName" ServerNameChanged="@(v => ServerName = v)"
+                           DoNotSaveMessages="@DoNotSaveMessages" DoNotSaveMessagesChanged="@(v => DoNotSaveMessages = v)"
+                           AppPassword="@AppPassword" AppPasswordChanged="@(v => AppPassword = v)"
+                           IsLoading="@IsLoading" Saved="@Saved" Error="@Error"
+                           SaveClicked="@SaveAsync" ResetClicked="@RequestServerRestart" />),
+        new("Domains", @<DomainsTab Domains="@Domains" SaveClicked="@SaveAsync" CheckDnsClicked="@CheckDomainDns" />),
+        new("Spam", @<SpamTab SpamhausKey="@SpamhausKey" SpamhausKeyChanged="@(v => SpamhausKey = v)"
+                 EnableSpamFiltering="@EnableSpamFiltering" EnableSpamFilteringChanged="@(v => EnableSpamFiltering = v)"
+                 EnableSpfCheck="@EnableSpfCheck" EnableSpfCheckChanged="@(v => EnableSpfCheck = v)"
+                 EnableDkimCheck="@EnableDkimCheck" EnableDkimCheckChanged="@(v => EnableDkimCheck = v)"
+                 EnableDmarcCheck="@EnableDmarcCheck" EnableDmarcCheckChanged="@(v => EnableDmarcCheck = v)"
+                 Rows="@_spamRows" IsLoading="@IsLoadingSpam" HasMore="@_spamHasMore"
+                 SaveClicked="@SaveAsync" RefreshClicked="@LoadSpamLogsAsync" LoadMoreClicked="@LoadMoreSpamLogsAsync" />),
+        new("SendGrid", @<SendGridTab SendGridApiKey="@SendGridApiKey" SendGridApiKeyChanged="@(v => SendGridApiKey = v)"
+                     SendGridFromEmail="@SendGridFromEmail" SendGridFromEmailChanged="@(v => SendGridFromEmail = v)"
+                     SaveClicked="@SaveAsync" />),
+        new("Logs", @<LogsTab Rows="@_logRows" IsLoading="@IsLoadingLogs"
+                 PageNumber="@(_logPageIndex + 1)" HasPrevious="@(_logPageIndex > 0)" HasNext="@_logsHasNext"
+                 RefreshClicked="@LoadServerLogsAsync" PreviousClicked="@PreviousServerLogsAsync" NextClicked="@NextServerLogsAsync" />)
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -386,36 +97,58 @@
         _ = LoadServerLogsAsync();
     }
 
-    // Server Log Logic
-    List<ServerLog>? ServerLogs;
-    bool IsLoadingLogs;
-    string? _logsContinuationToken;
-    bool _logsHasMore;
-    readonly int _logsPageSize = 50;
-
     async Task LoadServerLogsAsync()
     {
-        _logsContinuationToken = null;
-        _logsHasMore = true;
-        ServerLogs = new List<ServerLog>();
-        await LoadMoreServerLogsAsync();
+        // Reset to the first page.
+        _logPageStarts.Clear();
+        _logPageStarts.Add(null);
+        _logPageIndex = 0;
+        await LoadServerLogPageAsync(0);
     }
 
-    async Task LoadMoreServerLogsAsync()
+    async Task NextServerLogsAsync()
     {
-        if (IsLoadingLogs || !_logsHasMore) return;
+        if (IsLoadingLogs || !_logsHasNext) return;
+        await LoadServerLogPageAsync(_logPageIndex + 1);
+    }
+
+    async Task PreviousServerLogsAsync()
+    {
+        if (IsLoadingLogs || _logPageIndex == 0) return;
+        await LoadServerLogPageAsync(_logPageIndex - 1);
+    }
+
+    async Task LoadServerLogPageAsync(int pageIndex)
+    {
+        if (IsLoadingLogs) return;
         IsLoadingLogs = true;
         try
         {
-            var result = await LogService.GetLogsAsync(_logsPageSize, _logsContinuationToken);
-            ServerLogs!.AddRange(result.Logs);
-            _logsContinuationToken = result.ContinuationToken;
-            _logsHasMore = !string.IsNullOrEmpty(_logsContinuationToken);
+            var startCursor = _logPageStarts[pageIndex];
+            var result = await LogService.GetLogsAsync(_logsPageSize, startCursor);
+
+            // Replace the grid contents with just this page.
+            _logRows = result.Logs.Select(l => l.ToRow()).ToList();
+            _logPageIndex = pageIndex;
+
+            // If there's a next page, remember its start cursor.
+            if (!string.IsNullOrEmpty(result.ContinuationToken))
+            {
+                _logsHasNext = true;
+                if (pageIndex + 1 >= _logPageStarts.Count)
+                    _logPageStarts.Add(result.ContinuationToken);
+                else
+                    _logPageStarts[pageIndex + 1] = result.ContinuationToken;
+            }
+            else
+            {
+                _logsHasNext = false;
+            }
         }
         catch (Exception ex)
         {
             Log.LogError(ex, "Failed to load server logs");
-            _logsHasMore = false;
+            _logsHasNext = false;
         }
         finally
         {
@@ -435,9 +168,7 @@
             if (settings.HasValue)
             {
                 ServerName = settings.Value?.GetString("ServerName");
-
                 SpamhausKey = settings.Value?.GetString("SpamhausKey");
-
                 SendGridApiKey = settings.Value?.GetString("SendGridApiKey");
                 SendGridFromEmail = settings.Value?.GetString("SendGridFromEmail");
 
@@ -540,22 +271,12 @@
                 { "RestartRequested", DateTime.UtcNow }
             };
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
-            await DialogService.Alert("Restart signal sent to SMTP Service.", "Restart Requested");
+            ToastService.Show("Restart signal sent to SMTP Service.", "success");
         }
         catch (Exception ex)
         {
-            await DialogService.Alert($"Failed to send restart signal: {ex.Message}", "Error");
+            ToastService.Show($"Failed to send restart signal: {ex.Message}", "error");
         }
-    }
-
-    void AddDomain()
-    {
-        Domains.Add(new DomainConfiguration { DomainName = "new-domain.com" });
-    }
-
-    void RemoveDomain(DomainConfiguration domain)
-    {
-        Domains.Remove(domain);
     }
 
     async Task CheckDomainDns(DomainConfiguration domain)
@@ -570,23 +291,27 @@
 
             if (record != null && string.Equals(record.Exchange, (ServerName + "."), StringComparison.OrdinalIgnoreCase))
             {
-                await DialogService.Alert($"MX record for {domain.DomainName} is correct ({record.Exchange}).", "DNS Check");
+                _dnsDialogTitle = "DNS Check";
+                _dnsDialogMessage = $"MX record for {domain.DomainName} is correct ({record.Exchange}).";
             }
             else
             {
                 var expected = string.IsNullOrWhiteSpace(ServerName) ? "[Local Domain not set]" : (ServerName + ".");
-                await DialogService.Alert($"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {expected}", "DNS Check");
+                _dnsDialogTitle = "DNS Check";
+                _dnsDialogMessage = $"MX record for {domain.DomainName} is incorrect. Found: {record?.Exchange ?? "None"}. Expected: {expected}";
             }
+            _dnsDialogOpen = true;
         }
         catch (Exception ex)
         {
-            await DialogService.Alert($"DNS check failed: {ex.Message}", "Error");
+            _dnsDialogTitle = "Error";
+            _dnsDialogMessage = $"DNS check failed: {ex.Message}";
+            _dnsDialogOpen = true;
         }
     }
 
     async Task LoadSpamLogsAsync()
     {
-        // Initial load or refresh -> reset paging state
         _spamContinuationToken = null;
         _spamHasMore = true;
         SpamLogs = new List<SpamLog>();
@@ -606,7 +331,6 @@
             {
                 foreach (var entity in page.Values)
                 {
-                    // Map TableEntity -> SpamLog
                     var log = new SpamLog
                     {
                         PartitionKey = entity.PartitionKey,
@@ -624,11 +348,11 @@
                 }
                 _spamContinuationToken = page.ContinuationToken;
                 _spamHasMore = !string.IsNullOrEmpty(_spamContinuationToken);
-                break; // only one page per call
+                break;
             }
 
-            // Order descending by timestamp after adding page
             SpamLogs = SpamLogs?.OrderByDescending(x => x.Timestamp).ToList();
+            _spamRows = (SpamLogs ?? new()).Select(s => s.ToRow()).ToList();
         }
         catch (Exception ex)
         {

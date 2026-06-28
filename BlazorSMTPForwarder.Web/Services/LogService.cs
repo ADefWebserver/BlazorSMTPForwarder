@@ -8,26 +8,58 @@ namespace BlazorSMTPForwarder.Web.Services;
 public class LogService
 {
     private readonly TableClient _tableClient;
+    private bool _tableEnsured;
 
     public LogService(TableServiceClient tableServiceClient)
     {
         _tableClient = tableServiceClient.GetTableClient("serverlogs");
-        _tableClient.CreateIfNotExists();
     }
 
-    public async Task<(List<ServerLog> Logs, string? ContinuationToken)> GetLogsAsync(int pageSize, string? continuationToken)
+    private async Task EnsureTableAsync()
     {
-        var logs = new List<ServerLog>();
-        var query = _tableClient.QueryAsync<ServerLog>(maxPerPage: pageSize);
-
-        var pages = query.AsPages(continuationToken, pageSize);
-
-        await foreach (var page in pages)
+        if (_tableEnsured) return;
+        try
         {
-            logs.AddRange(page.Values);
-            return (logs, page.ContinuationToken);
+            await _tableClient.CreateIfNotExistsAsync();
+        }
+        catch
+        {
+            // Table may already exist or storage may be temporarily unreachable
+        }
+        _tableEnsured = true;
+    }
+
+    public async Task<List<ServerLog>> GetAllLogsAsync()
+    {
+        await EnsureTableAsync();
+        var logs = new List<ServerLog>();
+        await foreach (var log in _tableClient.QueryAsync<ServerLog>())
+        {
+            logs.Add(log);
+        }
+        return logs;
+    }
+
+    public async Task<(List<ServerLog> Logs, string? ContinuationToken)> GetLogsAsync(int pageSize, string? afterRowKey)
+    {
+        await EnsureTableAsync();
+        var logs = new List<ServerLog>();
+
+        // Use RowKey cursor-based pagination instead of continuation tokens.
+        // RowKey = (MaxTicks - UtcNow.Ticks) so entries are sorted newest-first ascending.
+        // To get the next page, filter for RowKey > last seen RowKey (= older entries).
+        string? filter = string.IsNullOrEmpty(afterRowKey)
+            ? "PartitionKey eq 'Log'"
+            : $"PartitionKey eq 'Log' and RowKey gt '{afterRowKey}'";
+
+        await foreach (var log in _tableClient.QueryAsync<ServerLog>(filter: filter, maxPerPage: pageSize))
+        {
+            logs.Add(log);
+            if (logs.Count >= pageSize) break;
         }
 
-        return (logs, null);
+        // If we got a full page, there are likely more entries
+        string? nextCursor = logs.Count >= pageSize ? logs[^1].RowKey : null;
+        return (logs, nextCursor);
     }
 }

@@ -1,0 +1,8 @@
+- generic [ref=e17]:
+  - heading "Login" [level=3] [ref=e18]
+  - generic [ref=e19]:
+    - generic [ref=e20]: Password
+    - generic [ref=e22]:
+      - textbox "Show password" [ref=e23]: password
+      - button "Show password" [ref=e24] [cursor=pointer]: 👁
+  - button "Login" [active] [ref=e25] [cursor=pointer]

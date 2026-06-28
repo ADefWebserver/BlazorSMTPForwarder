@@ -1,0 +1,70 @@
+@using BlazorSMTPForwarder.ServiceDefaults.Models
+
+<div class="row">
+    <div class="col-md-8">
+        @if (IsLoading)
+        {
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        }
+        else
+        {
+            @if (Saved)
+            {
+                <DxAlert Severity="success">Settings saved successfully.</DxAlert>
+            }
+            @if (Error != null)
+            {
+                <DxAlert Severity="error">@Error</DxAlert>
+            }
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12 col-md-6">
+                            <label class="form-label">Server Domain</label>
+                            <DxTextBox @bind-Value="ServerName" />
+                        </div>
+                        <div class="col-12 col-md-6 d-flex align-items-end">
+                            <DxSwitch @bind-Value="DoNotSaveMessages" Label="Do Not Save Messages to Blob Storage" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm mb-4">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label" for="appPassword">Website App Access Password</label>
+                            <DxPassword @bind-Value="AppPassword" />
+                            <div class="form-text mb-3">
+                                Protects access to this UI. Blank means open access. (Stored in appsettings.json)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3 d-flex gap-2">
+                <DxButton Variant="primary" Text="Save Settings" OnClick="@(async (MouseEventArgs e) => await SaveClicked.InvokeAsync())" />
+                <DxButton Variant="secondary" Text="Reset Server" OnClick="@(async (MouseEventArgs e) => await ResetClicked.InvokeAsync())" />
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? ServerName { get; set; }
+    [Parameter] public EventCallback<string?> ServerNameChanged { get; set; }
+    [Parameter] public bool DoNotSaveMessages { get; set; }
+    [Parameter] public EventCallback<bool> DoNotSaveMessagesChanged { get; set; }
+    [Parameter] public string? AppPassword { get; set; }
+    [Parameter] public EventCallback<string?> AppPasswordChanged { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool Saved { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public EventCallback SaveClicked { get; set; }
+    [Parameter] public EventCallback ResetClicked { get; set; }
+}

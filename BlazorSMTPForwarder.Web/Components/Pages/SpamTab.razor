@@ -1,0 +1,79 @@
+@using BlazorSMTPForwarder.ServiceDefaults.Models
+@using BlazorSMTPForwarder.Web.GridRows
+
+<div class="p-3">
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-12 col-md-6">
+                    <label class="form-label">Spamhaus Key</label>
+                    <DxPassword @bind-Value="SpamhausKey" />
+                    <div class="form-text">Spamhaus DQS Key</div>
+                </div>
+
+                <div class="col-12">
+                    <div class="d-flex gap-4 mt-2">
+                        <DxSwitch @bind-Value="EnableSpamFiltering" Label="Enable Spamhaus Filtering" />
+                        <DxSwitch @bind-Value="EnableSpfCheck" Label="Enable SPF Check" />
+                        <DxSwitch @bind-Value="EnableDkimCheck" Label="Enable DKIM Check" />
+                        <DxSwitch @bind-Value="EnableDmarcCheck" Label="Enable DMARC Check" />
+                    </div>
+                </div>
+                <div class="col-12">
+                    <DxButton Variant="primary" Text="Save Settings" OnClick="@(async (MouseEventArgs e) => await SaveClicked.InvokeAsync())" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="m-0">Spam Logs</h5>
+        <div class="d-flex gap-2">
+            <DxButton Variant="primary" Text="Refresh" OnClick="@(async (MouseEventArgs e) => await RefreshClicked.InvokeAsync())" />
+            @if (HasMore && !IsLoading)
+            {
+                <DxButton Variant="secondary" Text="More" OnClick="@(async (MouseEventArgs e) => await LoadMoreClicked.InvokeAsync())" />
+            }
+        </div>
+    </div>
+
+    @if (IsLoading && (Rows == null || Rows.Count == 0))
+    {
+        <div class="text-center p-3"><DxSpinner /></div>
+    }
+    else if (Rows == null || Rows.Count == 0)
+    {
+        <div class="text-muted">No spam logs found.</div>
+    }
+    else
+    {
+        <DxDataGrid TRow="SpamLogRow" Items="Rows" Accessor="_spamAccessor"
+                    Filterable="true" ShowFilterMenu="true" ShowExport="true"
+                    ExportFileName="spam-logs.csv" ViewportHeight="520" />
+        @if (IsLoading)
+        {
+            <div class="mt-2 text-muted">Loading more...</div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter] public string? SpamhausKey { get; set; }
+    [Parameter] public EventCallback<string?> SpamhausKeyChanged { get; set; }
+    [Parameter] public bool EnableSpamFiltering { get; set; }
+    [Parameter] public EventCallback<bool> EnableSpamFilteringChanged { get; set; }
+    [Parameter] public bool EnableSpfCheck { get; set; }
+    [Parameter] public EventCallback<bool> EnableSpfCheckChanged { get; set; }
+    [Parameter] public bool EnableDkimCheck { get; set; }
+    [Parameter] public EventCallback<bool> EnableDkimCheckChanged { get; set; }
+    [Parameter] public bool EnableDmarcCheck { get; set; }
+    [Parameter] public EventCallback<bool> EnableDmarcCheckChanged { get; set; }
+    [Parameter] public IReadOnlyList<SpamLogRow>? Rows { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool HasMore { get; set; }
+    [Parameter] public EventCallback SaveClicked { get; set; }
+    [Parameter] public EventCallback RefreshClicked { get; set; }
+    [Parameter] public EventCallback LoadMoreClicked { get; set; }
+
+    private readonly SpamLogRowGridAccessor _spamAccessor = new();
+}

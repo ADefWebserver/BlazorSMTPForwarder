@@ -1,5 +1,6 @@
 @page "/"
 @using BlazorSMTPForwarder.Web.Services
+@using BlazorSMTPForwarder.Web.GridRows
 @using Azure.Data.Tables
 @using BlazorSMTPForwarder.Web.Components.Dialogs
 @using System.Globalization
@@ -8,83 +9,75 @@
 @using BlazorSMTPForwarder.ServiceDefaults.Models
 @inject BlobEmailService EmailService
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
-@inject Radzen.DialogService DialogService
+@inject ToastService ToastService
 @inject TableServiceClient TableServiceClient
 @inject IConfiguration Configuration
 
 <PageTitle>Inbox</PageTitle>
 
 <!-- Two-column mail layout -->
-<RadzenRow Style="height:calc(100vh - 40px);">
+<div class="d-flex" style="height:calc(100vh - 40px);">
     <!-- Left column: compose + recipient + messages -->
-    <RadzenColumn Size="3" Style="height:100%; display:flex; flex-direction:column; gap:10px;">
-        <RadzenButton Text="New message" Icon="play_arrow" ButtonStyle="ButtonStyle.Success" Style="width:100%;" Click="@NewMessageClick" />
+    <div style="width:25%; height:100%; display:flex; flex-direction:column; gap:10px; padding-right:10px;">
+        <DxButton Variant="primary" Text="New message" OnClick="@(async (MouseEventArgs e) => NewMessageClick())" Style="width:100%;" />
 
         <!-- Recipient selector -->
         <div style="display:flex; flex-direction:column; flex:1 1 auto; min-height:0;">
-            <RadzenLabel Text="Mailbox" Style="margin-bottom:4px; font-weight:bold;" />
-            <RadzenDropDown Data="@_recipientFolders" @bind-Value="@_selectedRecipient"
-                            Change="@OnRecipientChanged" Style="width:100%;"
-                            Placeholder="Select mailbox..." />
+            <label style="margin-bottom:4px; font-weight:bold;">Mailbox</label>
+            <DxSelect TValue="string" Value="_selectedRecipient" Items="_recipientOptions"
+                      ValueChanged="@(async (string v) => { _selectedRecipient = v; await OnRecipientChanged(); })" />
 
             @if (_isLoadingMessages)
             {
-                <div class="rz-p-3" style="text-align:center;">
-                    <RadzenProgressBar Mode="ProgressBarMode.Indeterminate" />
+                <div style="text-align:center; padding:1rem;">
+                    <DxSpinner />
                     <small>Loading messages...</small>
                 </div>
             }
             else
             {
-                @if (_messages == null || _messages.Count == 0)
+                @if (_rows == null || _rows.Count == 0)
                 {
-                    <div class="rz-p-3 rz-text-muted">No messages found.</div>
+                    <div class="text-muted p-3">No messages found.</div>
                 }
                 else
                 {
-                    <RadzenListBox Data="@_messages" @bind-Value="@_selectedMessageId"
-                                   ValueProperty="Id" Change="@OnMessageSelected"
-                                   Style="flex:1 1 auto; min-height:0; overflow:auto;">
-                        <Template Context="m">
-                            @{ var item = (EmailListItem)m; }
-                            <div style="padding:4px 4px; display:flex; align-items:center; gap:6px; width:100%;">
-                                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(async _ => await ConfirmDeleteAsync(item))" />
-                                <div style="min-width:0; flex:1 1 auto; display:flex; flex-direction:column; gap:2px;">
-                                    <div class="rz-truncate" style="font-weight:bold;" title="@DisplaySubject(item.Subject)">Subject: @DisplaySubject(item.Subject)</div>
-                                    <div class="rz-truncate" title="@item.From">From: @item.From</div>
-                                    <div class="rz-truncate" title="@item.RecipientUser">To: @item.RecipientUser</div>
-                                    <div class="rz-truncate" style="font-size:0.85em; color:#666;">@item.Received.ToLocalTime().ToString("g")</div>
-                                </div>
-                            </div>
-                        </Template>
-                    </RadzenListBox>
+                    <DxDataGrid TRow="EmailRow"
+                                Items="_rows"
+                                Accessor="_emailAccessor"
+                                Selectable="true"
+                                Filterable="true"
+                                ShowFilterMenu="true"
+                                KeyboardNavigation="true"
+                                SelectionChanged="OnMessageSelected"
+                                RowHeight="34" ViewportHeight="500" />
                 }
             }
         </div>
-    </RadzenColumn>
+    </div>
 
     <!-- Right column: preview -->
-    <RadzenColumn Size="9" Style="height:100%; min-width:0; display:flex; flex-direction:column;">
+    <div style="width:75%; height:100%; min-width:0; display:flex; flex-direction:column;">
         <!-- Actions row -->
-        <div class="rz-d-flex rz-align-items-center" style="gap:12px; padding:4px 0;">
+        <div class="d-flex align-items-center" style="gap:12px; padding:4px 0;">
             @if (_currentEmail is not null)
             {
-                <RadzenButton Text="Reply" Icon="reply" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small" Click="@(_ => ReplyToCurrent())" />
-                <RadzenButton Text="Download .eml" Icon="download" ButtonStyle="ButtonStyle.Danger" Size="ButtonSize.Small" Click="@(_ => DownloadCurrent())" />
+                <DxButton Variant="primary" Text="Reply" OnClick="@(async (MouseEventArgs e) => ReplyToCurrent())" />
+                <DxButton Variant="secondary" Text="Download .eml" OnClick="@(async (MouseEventArgs e) => DownloadCurrent())" />
             }
         </div>
         <div style="flex:1 1 auto; min-height:0; overflow:auto; padding-right:4px;">
             @if (_isLoadingContent)
             {
-                <div class="rz-p-3"><em>Loading content...</em></div>
+                <div class="p-3"><DxSpinner /></div>
             }
             else if (_currentEmail is null)
             {
-                <div class="rz-text-muted" style="text-align:center; margin-top:3rem; font-size:1.2rem;">Select a message to view its details.</div>
+                <div class="text-muted" style="text-align:center; margin-top:3rem; font-size:1.2rem;">Select a message to view its details.</div>
             }
             else
             {
-                <div class="rz-p-2" style="max-width:100%;">
+                <div class="p-2" style="max-width:100%;">
                     <p><strong>Subject:</strong> @DisplaySubject(_currentEmail.Metadata.Subject)</p>
                     <p><strong>From:</strong> @_currentEmail.Metadata.From</p>
                     <p><strong>Received:</strong> @_currentEmail.Metadata.Received.ToLocalTime()</p>
@@ -104,11 +97,30 @@
                 </div>
             }
         </div>
-    </RadzenColumn>
-</RadzenRow>
+    </div>
+</div>
+
+<!-- Compose dialog -->
+<DxDialog @bind-Open="_composeOpen">
+    <h4>@_composeTitle</h4>
+    <ComposeEmailDialog DefaultTo="@_composeDefaultTo" DefaultFrom="@_composeDefaultFrom"
+                        DefaultSubject="@_composeDefaultSubject" DefaultBody="@_composeDefaultBody"
+                        OnClose="@OnComposeClose" />
+</DxDialog>
+
+<!-- Delete confirmation dialog -->
+<DxDialog @bind-Open="_deleteConfirmOpen">
+    <h4>Confirm Delete</h4>
+    <p>Delete message '@DisplaySubject(_deleteTarget?.Subject)' from '@_deleteTarget?.From'?</p>
+    <div class="d-flex justify-content-end gap-2">
+        <DxButton Variant="secondary" Text="Cancel" OnClick="@((MouseEventArgs e) => { _deleteConfirmOpen = false; })" />
+        <DxButton Variant="danger" Text="Delete" OnClick="@(async (MouseEventArgs e) => await ExecuteDeleteAsync())" />
+    </div>
+</DxDialog>
 
 @code {
     private List<string>? _recipientFolders;
+    private IReadOnlyList<ListOption<string>> _recipientOptions = Array.Empty<ListOption<string>>();
     private string? _selectedRecipient;
     private List<EmailListItem>? _messages;
     private EmailMessage? _currentEmail;
@@ -116,11 +128,27 @@
     private bool _isLoadingMessages;
     private bool _isLoadingContent;
 
+    // Grid
+    private readonly EmailRowGridAccessor _emailAccessor = new();
+    private IReadOnlyList<EmailRow> _rows = Array.Empty<EmailRow>();
+
     // SMTP settings from table
     private string? _settingsError;
 
     private string? _currentBody;
     private bool _isHtmlBody;
+
+    // Compose dialog state
+    private bool _composeOpen;
+    private string _composeTitle = "New Message";
+    private string? _composeDefaultTo;
+    private string? _composeDefaultFrom;
+    private string? _composeDefaultSubject;
+    private string? _composeDefaultBody;
+
+    // Delete confirmation dialog state
+    private bool _deleteConfirmOpen;
+    private EmailListItem? _deleteTarget;
 
     private string DisplaySubject(string? subject) => string.IsNullOrWhiteSpace(subject) ? "(no subject)" : subject!;
 
@@ -164,6 +192,7 @@
         var folders = (await EmailService.GetRecipientFoldersAsync()).ToList();
         folders.Insert(0, "All");
         _recipientFolders = folders;
+        _recipientOptions = folders.Select(f => new ListOption<string>(f, f, false)).ToList();
         
         // Select "All" if none selected
         if (string.IsNullOrEmpty(_selectedRecipient))
@@ -193,6 +222,7 @@
         {
             var folder = _selectedRecipient == "All" ? null : _selectedRecipient;
             _messages = (await EmailService.ListEmailsAsync(folder)).ToList();
+            _rows = _messages.Select(m => m.ToRow()).ToList();
         }
         finally
         {
@@ -201,7 +231,14 @@
         }
     }
 
-    private async Task OnMessageSelected()
+    private async Task OnMessageSelected(IReadOnlyList<EmailRow> sel)
+    {
+        if (sel.Count == 0) return;
+        _selectedMessageId = sel[^1].Id;
+        await LoadSelectedEmailAsync();
+    }
+
+    private async Task LoadSelectedEmailAsync()
     {
         if (string.IsNullOrEmpty(_selectedMessageId)) return;
         _isLoadingContent = true;
@@ -366,7 +403,7 @@
         return map;
     }
 
-    private async Task NewMessageClick()
+    private void NewMessageClick()
     {
         var defaultFrom = _selectedRecipient;
         if (defaultFrom == "All") defaultFrom = "";
@@ -376,14 +413,12 @@
             if (parts.Length == 2) defaultFrom = $"{parts[1]}@{parts[0]}";
         }
 
-        await DialogService.OpenAsync<ComposeEmailDialog>("New Message",
-               new Dictionary<string, object?>() {
-                   { "DefaultFrom", defaultFrom ?? "" }
-               },
-               new DialogOptions() { Width = "700px", Height = "620px", Resizable = true, Draggable = true });
-        
-        // Refresh after close (in case they sent to self)
-        await RefreshFoldersAsync();
+        _composeTitle = "New Message";
+        _composeDefaultTo = null;
+        _composeDefaultFrom = defaultFrom ?? "";
+        _composeDefaultSubject = null;
+        _composeDefaultBody = null;
+        _composeOpen = true;
     }
 
     private static (string Address, string Display) ParseEmailAddressWithMimeKit(string rawEml, string headerName, string fallback)
@@ -422,7 +457,7 @@
         }
     }
 
-    private async void ReplyToCurrent()
+    private void ReplyToCurrent()
     {
         if (_currentEmail is null) return;
 
@@ -444,21 +479,20 @@
             ? "re: " + originalSubject
             : originalSubject;
 
-        // Parse "Date" header to a friendly local string if possible
-        // ... (omitted for brevity, similar to original)
-
         var body = $"\n\n\nOn {_currentEmail.Metadata.Received.ToLocalTime():g}, {fromDisplay} wrote:\n> " + 
                    (_currentBody ?? "").Replace("\n", "\n> ");
 
-        await DialogService.OpenAsync<ComposeEmailDialog>("Reply",
-               new Dictionary<string, object?>() {
-                   { "DefaultTo", fromAddress },
-                   { "DefaultFrom", toAddress }, // Reply from the recipient of the original
-                   { "DefaultSubject", subject },
-                   { "DefaultBody", body }
-               },
-               new DialogOptions() { Width = "700px", Height = "620px", Resizable = true, Draggable = true });
-        
+        _composeTitle = "Reply";
+        _composeDefaultTo = fromAddress;
+        _composeDefaultFrom = toAddress;
+        _composeDefaultSubject = subject;
+        _composeDefaultBody = body;
+        _composeOpen = true;
+    }
+
+    private async Task OnComposeClose()
+    {
+        _composeOpen = false;
         await RefreshFoldersAsync();
     }
 
@@ -472,21 +506,26 @@
         JSRuntime.InvokeVoidAsync("eval", $"(function(){{var a=document.createElement('a');a.href='{url}';a.download='{fileName}';a.click();}})();");
     }
 
-    private async Task ConfirmDeleteAsync(EmailListItem item)
+    private void ConfirmDeleteAsync(EmailListItem item)
     {
-        var confirmed = await DialogService.Confirm($"Delete message '{DisplaySubject(item.Subject)}' from '{item.From}'?", "Confirm Delete", new ConfirmOptions() { OkButtonText = "Delete", CancelButtonText = "Cancel", CloseDialogOnOverlayClick = true });
-        if (confirmed == true)
+        _deleteTarget = item;
+        _deleteConfirmOpen = true;
+    }
+
+    private async Task ExecuteDeleteAsync()
+    {
+        if (_deleteTarget is null) return;
+        _deleteConfirmOpen = false;
+        var ok = await EmailService.DeleteEmailAsync(_deleteTarget.BlobName);
+        if (ok)
         {
-            var ok = await EmailService.DeleteEmailAsync(item.BlobName);
-            if (ok)
+            if (_currentEmail?.Metadata.Id == _deleteTarget.Id)
             {
-                if (_currentEmail?.Metadata.Id == item.Id)
-                {
-                    _currentEmail = null;
-                    _selectedMessageId = null;
-                }
-                await RefreshMessagesAsync();
+                _currentEmail = null;
+                _selectedMessageId = null;
             }
+            await RefreshMessagesAsync();
         }
+        _deleteTarget = null;
     }
 }

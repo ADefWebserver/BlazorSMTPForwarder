@@ -23,13 +23,12 @@ else
                 <h3 class="card-title text-center mb-4">Login</h3>
                 @if (!string.IsNullOrEmpty(Error))
                 {
-                    <div class="alert alert-danger">@Error</div>
+                    <DxAlert Severity="error">@Error</DxAlert>
                 }
-                <div class="mb-3">
-                    <label class="form-label">Password</label>
-                    <input type="password" class="form-control" @bind="Password" @onkeyup="HandleKeyUp" />
+                <div class="mb-3" @onkeyup="HandleKeyUp">
+                    <DxPassword @bind-Value="Password" Label="Password" />
                 </div>
-                <button class="btn btn-primary w-100" @onclick="DoLogin">Login</button>
+                <DxButton Variant="primary" Text="Login" OnClick="@((MouseEventArgs e) => DoLogin())" Class="w-100" />
             </div>
         </div>
     </div>
