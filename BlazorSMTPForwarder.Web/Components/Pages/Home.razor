@@ -19,13 +19,24 @@
 <div class="d-flex" style="height:calc(100vh - 40px);">
     <!-- Left column: compose + recipient + messages -->
     <div style="width:25%; height:100%; display:flex; flex-direction:column; gap:10px; padding-right:10px;">
-        <DxButton Variant="primary" Text="New message" OnClick="@(async (MouseEventArgs e) => NewMessageClick())" Style="width:100%;" />
+        <div class="d-flex" style="gap:8px;">
+            <DxButton Variant="primary" Text="New message" OnClick="@(async (MouseEventArgs e) => NewMessageClick())" Style="flex:1;" />
+            <DxButton Variant="danger" Text="Delete" Enabled="@(_selectedMessageIds.Count > 0)"
+                      OnClick="@(async (MouseEventArgs e) => ConfirmDeleteSelection())" />
+        </div>
 
         <!-- Recipient selector -->
         <div style="display:flex; flex-direction:column; flex:1 1 auto; min-height:0;">
             <label style="margin-bottom:4px; font-weight:bold;">Mailbox</label>
             <DxSelect TValue="string" Value="_selectedRecipient" Items="_recipientOptions"
                       ValueChanged="@(async (string v) => { _selectedRecipient = v; await OnRecipientChanged(); })" />
+            <div class="d-flex align-items-center" style="gap:8px; padding:8px 0;">
+                <small class="text-muted">@_unreadCount unread</small>
+                <DxButton Variant="secondary" Text="Mark read" Enabled="@(_selectedMessageIds.Count > 0)"
+                          OnClick="@(async (MouseEventArgs e) => await SetSelectedReadAsync(true))" />
+                <DxButton Variant="secondary" Text="Mark unread" Enabled="@(_selectedMessageIds.Count > 0)"
+                          OnClick="@(async (MouseEventArgs e) => await SetSelectedReadAsync(false))" />
+            </div>
 
             @if (_isLoadingMessages)
             {
@@ -42,6 +53,7 @@
                 }
                 else
                 {
+                    <div class="dx-grid-resizable" data-grid-resize-key="mail-list">
                     <DxDataGrid TRow="EmailRow"
                                 Items="_rows"
                                 Accessor="_emailAccessor"
@@ -51,6 +63,7 @@
                                 KeyboardNavigation="true"
                                 SelectionChanged="OnMessageSelected"
                                 RowHeight="34" ViewportHeight="500" />
+                    </div>
                 }
             }
         </div>
@@ -64,6 +77,7 @@
             {
                 <DxButton Variant="primary" Text="Reply" OnClick="@(async (MouseEventArgs e) => ReplyToCurrent())" />
                 <DxButton Variant="secondary" Text="Download .eml" OnClick="@(async (MouseEventArgs e) => DownloadCurrent())" />
+                <DxButton Variant="danger" Text="Delete" OnClick="@(async (MouseEventArgs e) => ConfirmDeleteCurrent())" />
             }
         </div>
         <div style="flex:1 1 auto; min-height:0; overflow:auto; padding-right:4px;">
@@ -82,6 +96,21 @@
                     <p><strong>From:</strong> @_currentEmail.Metadata.From</p>
                     <p><strong>Received:</strong> @_currentEmail.Metadata.Received.ToLocalTime()</p>
                     <p><strong>Recipient User:</strong> @_currentEmail.Metadata.RecipientUser</p>
+                    <p><strong>Attachments:</strong> @(_currentEmail.Metadata.HasAttachments ? "Yes" : "No")</p>
+                    @if (_attachments.Count > 0)
+                    {
+                        <div class="mb-3">
+                            <strong>Files</strong>
+                            @foreach (var attachment in _attachments)
+                            {
+                                <div class="d-flex align-items-center" style="gap:8px;">
+                                    <span>@attachment.FileName (@FormatSize(attachment.Size))</span>
+                                    <DxButton Variant="secondary" Text="Download"
+                                              OnClick="@(async (MouseEventArgs e) => await DownloadAttachment(attachment))" />
+                                </div>
+                            }
+                        </div>
+                    }
                     <hr />
                     @if (_isHtmlBody && !string.IsNullOrEmpty(_currentBody))
                     {
@@ -111,7 +140,7 @@
 <!-- Delete confirmation dialog -->
 <DxDialog @bind-Open="_deleteConfirmOpen">
     <h4>Confirm Delete</h4>
-    <p>Delete message '@DisplaySubject(_deleteTarget?.Subject)' from '@_deleteTarget?.From'?</p>
+    <p>Delete @_deleteTargets.Count message(s) permanently?</p>
     <div class="d-flex justify-content-end gap-2">
         <DxButton Variant="secondary" Text="Cancel" OnClick="@((MouseEventArgs e) => { _deleteConfirmOpen = false; })" />
         <DxButton Variant="danger" Text="Delete" OnClick="@(async (MouseEventArgs e) => await ExecuteDeleteAsync())" />
@@ -125,6 +154,8 @@
     private List<EmailListItem>? _messages;
     private EmailMessage? _currentEmail;
     private string? _selectedMessageId;
+    private readonly HashSet<string> _selectedMessageIds = new(StringComparer.Ordinal);
+    private int _unreadCount;
     private bool _isLoadingMessages;
     private bool _isLoadingContent;
 
@@ -137,6 +168,7 @@
 
     private string? _currentBody;
     private bool _isHtmlBody;
+    private readonly List<AttachmentDownload> _attachments = new();
 
     // Compose dialog state
     private bool _composeOpen;
@@ -148,7 +180,7 @@
 
     // Delete confirmation dialog state
     private bool _deleteConfirmOpen;
-    private EmailListItem? _deleteTarget;
+    private readonly List<EmailListItem> _deleteTargets = new();
 
     private string DisplaySubject(string? subject) => string.IsNullOrWhiteSpace(subject) ? "(no subject)" : subject!;
 
@@ -209,6 +241,7 @@
     private async Task OnRecipientChanged()
     {
         _selectedMessageId = null;
+        _selectedMessageIds.Clear();
         _currentEmail = null;
         await RefreshMessagesAsync();
     }
@@ -223,6 +256,7 @@
             var folder = _selectedRecipient == "All" ? null : _selectedRecipient;
             _messages = (await EmailService.ListEmailsAsync(folder)).ToList();
             _rows = _messages.Select(m => m.ToRow()).ToList();
+            _unreadCount = _messages.Count(message => !message.IsRead);
         }
         finally
         {
@@ -234,6 +268,9 @@
     private async Task OnMessageSelected(IReadOnlyList<EmailRow> sel)
     {
         if (sel.Count == 0) return;
+        _selectedMessageIds.Clear();
+        foreach (var row in sel)
+            _selectedMessageIds.Add(row.Id);
         _selectedMessageId = sel[^1].Id;
         await LoadSelectedEmailAsync();
     }
@@ -244,6 +281,7 @@
         _isLoadingContent = true;
         _currentEmail = null;
         _currentBody = null;
+        _attachments.Clear();
         StateHasChanged();
 
         try
@@ -257,6 +295,7 @@
                 var (body, isHtml) = ExtractBodyWithMimeKit(msg.RawEml);
                 _currentBody = body;
                 _isHtmlBody = isHtml;
+                _attachments.AddRange(GetAttachments(msg.RawEml));
             }
         }
         finally
@@ -403,6 +442,37 @@
         return map;
     }
 
+    private static IReadOnlyList<AttachmentDownload> GetAttachments(string raw)
+    {
+        try
+        {
+            using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(raw));
+            var message = MimeMessage.Load(stream);
+            return message.Attachments.OfType<MimePart>()
+                .Where(part => part.Content is not null)
+                .Select((part, index) =>
+                {
+                    using var content = new MemoryStream();
+                    part.Content!.DecodeTo(content);
+                    return new AttachmentDownload(
+                        string.IsNullOrWhiteSpace(part.FileName) ? $"attachment-{index + 1}.bin" : part.FileName,
+                        part.ContentType.MimeType,
+                        content.ToArray());
+                })
+                .ToList();
+        }
+        catch
+        {
+            return Array.Empty<AttachmentDownload>();
+        }
+    }
+
+    private static string FormatSize(long size) => size < 1024
+        ? $"{size} B"
+        : size < 1024 * 1024
+            ? $"{size / 1024d:0.#} KB"
+            : $"{size / 1024d / 1024d:0.#} MB";
+
     private void NewMessageClick()
     {
         var defaultFrom = _selectedRecipient;
@@ -506,26 +576,66 @@
         JSRuntime.InvokeVoidAsync("eval", $"(function(){{var a=document.createElement('a');a.href='{url}';a.download='{fileName}';a.click();}})();");
     }
 
-    private void ConfirmDeleteAsync(EmailListItem item)
+    private void ConfirmDeleteSelection()
     {
-        _deleteTarget = item;
+        _deleteTargets.Clear();
+        if (_messages is not null)
+            _deleteTargets.AddRange(_messages.Where(message => _selectedMessageIds.Contains(message.Id)));
         _deleteConfirmOpen = true;
+    }
+
+    private void ConfirmDeleteCurrent()
+    {
+        if (_currentEmail is null) return;
+        _selectedMessageIds.Clear();
+        _selectedMessageIds.Add(_currentEmail.Metadata.Id);
+        ConfirmDeleteSelection();
+    }
+
+    private async Task DownloadAttachment(AttachmentDownload attachment)
+    {
+        var fileName = Path.GetFileName(attachment.FileName)
+            .Replace("\r", "", StringComparison.Ordinal)
+            .Replace("\n", "", StringComparison.Ordinal)
+            .Replace("\"", "", StringComparison.Ordinal);
+        if (string.IsNullOrWhiteSpace(fileName)) fileName = "attachment.bin";
+        await JSRuntime.InvokeVoidAsync("downloadFile", attachment.ContentType, attachment.Content, fileName);
     }
 
     private async Task ExecuteDeleteAsync()
     {
-        if (_deleteTarget is null) return;
+        if (_deleteTargets.Count == 0) return;
         _deleteConfirmOpen = false;
-        var ok = await EmailService.DeleteEmailAsync(_deleteTarget.BlobName);
-        if (ok)
+        var result = await EmailService.DeleteEmailsAsync(_deleteTargets.Select(target => target.BlobName).ToList());
+        if (result.Deleted.Count > 0)
         {
-            if (_currentEmail?.Metadata.Id == _deleteTarget.Id)
+            if (_currentEmail is not null && result.Deleted.Contains(_currentEmail.Metadata.Id, StringComparer.Ordinal))
             {
                 _currentEmail = null;
                 _selectedMessageId = null;
             }
+            ToastService.Show($"Deleted {result.Deleted.Count} message(s).", "success");
+        }
+        if (result.Failed.Count > 0)
+            ToastService.Show($"Could not delete {result.Failed.Count} message(s).", "error");
+        _selectedMessageIds.Clear();
+        _deleteTargets.Clear();
+        await RefreshMessagesAsync();
+    }
+
+    private async Task SetSelectedReadAsync(bool isRead)
+    {
+        if (_selectedMessageIds.Count == 0) return;
+        var updated = await EmailService.SetReadAsync(_selectedMessageIds.ToList(), isRead);
+        if (updated.Count > 0)
+        {
+            ToastService.Show(isRead ? $"Marked {updated.Count} message(s) as read." : $"Marked {updated.Count} message(s) as unread.", "success");
             await RefreshMessagesAsync();
         }
-        _deleteTarget = null;
+    }
+
+    private sealed record AttachmentDownload(string FileName, string ContentType, byte[] Content)
+    {
+        public long Size => Content.LongLength;
     }
 }

@@ -1,9 +1,9 @@
 @using BlazorSMTPForwarder.ServiceDefaults.Models
 @using BlazorSMTPForwarder.Web.GridRows
 
-<div class="p-3">
+<div class="admin-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="m-0">Server Logs &mdash; Page @PageNumber (@(Rows?.Count ?? 0) rows)</h5>
+        <h5 class="m-0">Server Logs (@FilteredRows.Count rows)</h5>
         <div class="d-flex gap-2">
             <DxButton Variant="primary" Text="Refresh" OnClick="@(async (MouseEventArgs e) => await RefreshClicked.InvokeAsync())" />
             <DxButton Variant="secondary" Text="◀ Previous" Disabled="@(!HasPrevious || IsLoading)"
@@ -11,6 +11,12 @@
             <DxButton Variant="secondary" Text="Next ▶" Disabled="@(!HasNext || IsLoading)"
                       OnClick="@(async (MouseEventArgs e) => await NextClicked.InvokeAsync())" />
         </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="server-log-filter">Filter logs</label>
+        <input id="server-log-filter" class="form-control" @bind="_filterText" @bind:event="oninput"
+               placeholder="Search level, source, message, or exception" />
     </div>
 
     @if (IsLoading && (Rows == null || Rows.Count == 0))
@@ -23,9 +29,11 @@
     }
     else
     {
-        <DxDataGrid @key="@PageNumber" TRow="ServerLogRow" Items="Rows" Accessor="_logAccessor"
+        <div class="dx-grid-resizable" data-grid-resize-key="server-logs">
+        <DxDataGrid @key="@PageNumber" TRow="ServerLogRow" Items="FilteredRows" Accessor="_logAccessor"
                     Filterable="true" ShowExport="true"
                     ExportFileName="server-logs.csv" ViewportHeight="520" />
+        </div>
         @if (IsLoading)
         {
             <div class="mt-2 text-muted">Loading...</div>
@@ -44,4 +52,11 @@
     [Parameter] public EventCallback NextClicked { get; set; }
 
     private readonly ServerLogRowGridAccessor _logAccessor = new();
+    private string _filterText = "";
+
+    private IReadOnlyList<ServerLogRow> FilteredRows => (Rows ?? Array.Empty<ServerLogRow>())
+        .Where(row => string.IsNullOrWhiteSpace(_filterText)
+            || $"{row.Level} {row.Source} {row.Message} {row.Exception}"
+                .Contains(_filterText, StringComparison.OrdinalIgnoreCase))
+        .ToList();
 }

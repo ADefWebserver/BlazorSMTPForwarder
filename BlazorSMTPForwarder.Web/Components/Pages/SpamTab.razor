@@ -1,8 +1,8 @@
 @using BlazorSMTPForwarder.ServiceDefaults.Models
 @using BlazorSMTPForwarder.Web.GridRows
 
-<div class="p-3">
-    <div class="card shadow-sm mb-4">
+<div class="admin-page">
+    <div class="admin-card">
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-12 col-md-6">
@@ -26,6 +26,7 @@
         </div>
     </div>
 
+    <div class="admin-card">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h5 class="m-0">Spam Logs</h5>
         <div class="d-flex gap-2">
@@ -35,6 +36,12 @@
                 <DxButton Variant="secondary" Text="More" OnClick="@(async (MouseEventArgs e) => await LoadMoreClicked.InvokeAsync())" />
             }
         </div>
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="spam-log-filter">Filter spam logs</label>
+        <input id="spam-log-filter" class="form-control" @bind="_filterText" @bind:event="oninput"
+               placeholder="Search sender, recipient, subject, IP, or reason" />
     </div>
 
     @if (IsLoading && (Rows == null || Rows.Count == 0))
@@ -47,14 +54,17 @@
     }
     else
     {
-        <DxDataGrid TRow="SpamLogRow" Items="Rows" Accessor="_spamAccessor"
+        <div class="dx-grid-resizable" data-grid-resize-key="spam-logs">
+        <DxDataGrid TRow="SpamLogRow" Items="FilteredRows" Accessor="_spamAccessor"
                     Filterable="true" ShowFilterMenu="true" ShowExport="true"
                     ExportFileName="spam-logs.csv" ViewportHeight="520" />
+        </div>
         @if (IsLoading)
         {
             <div class="mt-2 text-muted">Loading more...</div>
         }
     }
+</div>
 </div>
 
 @code {
@@ -76,4 +86,11 @@
     [Parameter] public EventCallback LoadMoreClicked { get; set; }
 
     private readonly SpamLogRowGridAccessor _spamAccessor = new();
+    private string _filterText = "";
+
+    private IReadOnlyList<SpamLogRow> FilteredRows => (Rows ?? Array.Empty<SpamLogRow>())
+        .Where(row => string.IsNullOrWhiteSpace(_filterText)
+            || $"{row.From} {row.To} {row.Subject} {row.IP} {row.DetectionReason}"
+                .Contains(_filterText, StringComparison.OrdinalIgnoreCase))
+        .ToList();
 }

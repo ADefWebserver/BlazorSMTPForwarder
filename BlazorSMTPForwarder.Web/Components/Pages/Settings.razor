@@ -14,7 +14,7 @@
 @inject ToastService ToastService
 @inject BlazorSMTPForwarder.Web.Services.LogService LogService
 
-<div>
+<div class="admin-page">
     <h1 class="h3 mb-0">Settings</h1>
     <br />
     <DxTabs Items="_tabs" @bind-SelectedIndex="_selectedTab" />
@@ -39,7 +39,7 @@
     List<DomainConfiguration> Domains = new();
     bool Saved; string? Error;
 
-    bool IsLoading; bool Saving;
+    bool IsLoading;
 
     bool EnableSpamFiltering; bool EnableSpfCheck; bool EnableDmarcCheck; bool EnableDkimCheck;
     bool DoNotSaveMessages;
@@ -193,7 +193,7 @@
 
     async Task SaveAsync()
     {
-        Error = null; Saved = false; Saving = true;
+        Error = null; Saved = false;
         try
         {
             await SaveAppPasswordToAppSettingsAsync(AppPassword ?? string.Empty);
@@ -217,9 +217,14 @@
             await table.UpsertEntityAsync(entity, TableUpdateMode.Merge);
 
             Saved = true;
+            ToastService.Show("Settings saved.", "success");
         }
-        catch (Exception ex) { Error = ex.Message; Log.LogError(ex, "Save failed"); }
-        finally { Saving = false; }
+        catch (Exception ex)
+        {
+            Error = ex.Message;
+            Log.LogError(ex, "Save failed");
+            ToastService.Show("Settings could not be saved.", "error");
+        }
     }
 
     async Task SaveAppPasswordToAppSettingsAsync(string value)

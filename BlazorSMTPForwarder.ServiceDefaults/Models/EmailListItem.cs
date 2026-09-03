@@ -10,5 +10,7 @@ public record EmailListItem(
     string RecipientUser,
     long Size,
     string BlobName,
-    string Container
+    string Container,
+    bool IsRead = false,
+    bool HasAttachments = false
 );

@@ -14,6 +14,9 @@ namespace BlazorSMTPForwarder.Web.Services;
 /// </summary>
 public class BlobEmailService
 {
+    public sealed record BulkDeleteResult(IReadOnlyList<string> Deleted, IReadOnlyList<DeleteFailure> Failed);
+    public sealed record DeleteFailure(string BlobName, string Reason);
+
     private readonly BlobServiceClient _blobServiceClient;
     private readonly ILogger<BlobEmailService> _logger;
     private readonly string _containerName = "email-messages";
@@ -120,6 +123,10 @@ public class BlobEmailService
 
                 var subject = blob.Metadata.TryGetValue("Subject", out var subj) ? subj : null;
                 var from = blob.Metadata.TryGetValue("From", out var f) ? f : null;
+                var isRead = blob.Metadata.TryGetValue("IsRead", out var readValue)
+                    && bool.TryParse(readValue, out var parsedRead) && parsedRead;
+                var hasAttachments = blob.Metadata.TryGetValue("HasAttachments", out var attachmentValue)
+                    && bool.TryParse(attachmentValue, out var parsedAttachments) && parsedAttachments;
 
                 // If metadata is missing (legacy emails), try to fetch from blob content
                 if (subject == null || from == null)
@@ -149,7 +156,9 @@ public class BlobEmailService
                     RecipientUser: metaRecipient ?? "",
                     Size: size,
                     BlobName: blob.Name,
-                    Container: _containerName ?? string.Empty
+                    Container: _containerName ?? string.Empty,
+                    IsRead: isRead,
+                    HasAttachments: hasAttachments
                 ));
             }
         }
@@ -208,6 +217,7 @@ public class BlobEmailService
 
             var props = await blob.GetPropertiesAsync(cancellationToken: ct);
             var size = props.Value.ContentLength;
+            var metadata = props.Value.Metadata;
 
             var item = new EmailListItem(
                 Id: blobName,
@@ -217,7 +227,11 @@ public class BlobEmailService
                 RecipientUser: recipient,
                 Size: size,
                 BlobName: blobName,
-                Container: _containerName ?? string.Empty
+                Container: _containerName ?? string.Empty,
+                IsRead: metadata.TryGetValue("IsRead", out var readValue)
+                    && bool.TryParse(readValue, out var parsedRead) && parsedRead,
+                HasAttachments: metadata.TryGetValue("HasAttachments", out var attachmentValue)
+                    && bool.TryParse(attachmentValue, out var parsedAttachments) && parsedAttachments
             );
 
             return new EmailMessage(item, raw);
@@ -241,6 +255,9 @@ public class BlobEmailService
 
     public async Task<bool> DeleteEmailAsync(string blobName, CancellationToken ct = default)
     {
+        if (!IsValidEmailBlobName(blobName))
+            return false;
+
         try
         {
             var container = await GetOrCreateContainerAsync(ct);
@@ -261,6 +278,100 @@ public class BlobEmailService
         {
             return false;
         }
+    }
+
+    public async Task<BulkDeleteResult> DeleteEmailsAsync(
+        IReadOnlyCollection<string> blobNames, CancellationToken ct = default)
+    {
+        var deleted = new List<string>();
+        var failed = new List<DeleteFailure>();
+        using var gate = new SemaphoreSlim(8);
+        var tasks = blobNames.Distinct(StringComparer.Ordinal).Select(async blobName =>
+        {
+            await gate.WaitAsync(ct);
+            try
+            {
+                if (await DeleteEmailAsync(blobName, ct))
+                    lock (deleted) deleted.Add(blobName);
+                else
+                    lock (failed) failed.Add(new DeleteFailure(blobName, "Blob deletion failed."));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                lock (failed) failed.Add(new DeleteFailure(blobName, ex.Message));
+            }
+            finally
+            {
+                gate.Release();
+            }
+        });
+        await Task.WhenAll(tasks);
+        return new BulkDeleteResult(deleted, failed);
+    }
+
+    public Task<bool> SetReadAsync(string blobName, bool isRead, CancellationToken ct = default) =>
+        UpdateMetadataAsync(blobName, new Dictionary<string, string> { ["IsRead"] = isRead.ToString().ToLowerInvariant() }, ct);
+
+    public async Task<IReadOnlyList<string>> SetReadAsync(
+        IReadOnlyCollection<string> blobNames, bool isRead, CancellationToken ct = default)
+    {
+        var updated = new List<string>();
+        foreach (var blobName in blobNames.Distinct(StringComparer.Ordinal))
+        {
+            if (await SetReadAsync(blobName, isRead, ct))
+                updated.Add(blobName);
+        }
+        return updated;
+    }
+
+    public async Task<int> GetUnreadCountAsync(string? recipientFolder, CancellationToken ct = default)
+    {
+        var messages = await ListEmailsAsync(recipientFolder, ct);
+        return messages.Count(message => !message.IsRead);
+    }
+
+    private async Task<bool> UpdateMetadataAsync(string blobName, IDictionary<string, string> updates, CancellationToken ct)
+    {
+        if (!IsValidEmailBlobName(blobName))
+            return false;
+
+        try
+        {
+            var container = await GetOrCreateContainerAsync(ct);
+            var blob = container.GetBlobClient(blobName);
+            for (var attempt = 0; attempt < 2; attempt++)
+            {
+                var properties = await blob.GetPropertiesAsync(cancellationToken: ct);
+                var metadata = new Dictionary<string, string>(properties.Value.Metadata, StringComparer.OrdinalIgnoreCase);
+                foreach (var update in updates)
+                    metadata[update.Key] = update.Value;
+                try
+                {
+                    await blob.SetMetadataAsync(metadata,
+                        new BlobRequestConditions { IfMatch = properties.Value.ETag }, ct);
+                    return true;
+                }
+                catch (RequestFailedException ex) when (ex.Status == 412 && attempt == 0)
+                {
+                }
+            }
+        }
+        catch (RequestFailedException ex)
+        {
+            _logger.LogWarning(ex, "Updating metadata failed for blob {Blob}", blobName);
+        }
+        return false;
+    }
+
+    private static bool IsValidEmailBlobName(string blobName)
+    {
+        if (string.IsNullOrWhiteSpace(blobName) || blobName.Contains("..", StringComparison.Ordinal))
+            return false;
+
+        var parts = blobName.Split('/');
+        return parts.Length == 3
+            && parts.All(part => !string.IsNullOrWhiteSpace(part))
+            && blobName.EndsWith(".eml", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? TryGetHeader(string eml, string header)

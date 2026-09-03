@@ -79,7 +79,8 @@ public class ZetianMessageHandler
                                 var userName = parts[0];
                                 var domain = parts[1];
 
-                                var fileName = $"{domain}/{userName}/{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid():N}.eml";
+                                var reverseTicks = DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks;
+                                var fileName = $"{domain}/{userName}/{reverseTicks:D19}_{Guid.NewGuid():N}.eml";
                                 var blobClient = container.GetBlobClient(fileName);
 
                                 stream.Position = 0;
@@ -92,6 +93,8 @@ public class ZetianMessageHandler
                                     metadata["Subject"] = SanitizeHeader(mimeMessage.Subject ?? "(no subject)");
                                     metadata["From"] = SanitizeHeader(mimeMessage.From?.ToString() ?? "");
                                     metadata["RecipientUser"] = SanitizeHeader($"{userName}@{domain}");
+                                    metadata["IsRead"] = "false";
+                                    metadata["HasAttachments"] = mimeMessage.Attachments.Any().ToString().ToLowerInvariant();
                                 }
                                 catch (Exception ex)
                                 {

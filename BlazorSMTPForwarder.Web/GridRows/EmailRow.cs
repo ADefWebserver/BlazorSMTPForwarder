@@ -11,4 +11,6 @@ public sealed class EmailRow
     [GridColumn("To", Order = 3)] public string RecipientUser { get; set; } = "";
     [GridColumn("Received", Order = 4)] public string Received { get; set; } = "";
     [GridColumn("Size", Order = 5)] public int SizeBytes { get; set; }
+    [GridColumn("Read", Order = 6)] public bool IsRead { get; set; }
+    [GridColumn("Attachments", Order = 7)] public bool HasAttachments { get; set; }
 }

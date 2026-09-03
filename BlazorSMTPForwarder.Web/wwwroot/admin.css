@@ -1,0 +1,56 @@
+:root {
+    --admin-space-1: 4px;
+    --admin-space-2: 8px;
+    --admin-space-3: 12px;
+    --admin-space-4: 16px;
+    --admin-space-5: 24px;
+    --admin-space-6: 32px;
+    --admin-card-radius: 8px;
+    --admin-card-border: 1px solid #e2e5e9;
+    --admin-card-shadow: 0 1px 2px rgba(16, 24, 40, .06);
+}
+
+.admin-page {
+    padding: var(--admin-space-5);
+}
+
+.admin-page > h1 {
+    margin-bottom: var(--admin-space-5);
+}
+
+.admin-card {
+    background: #fff;
+    border: var(--admin-card-border);
+    border-radius: var(--admin-card-radius);
+    box-shadow: var(--admin-card-shadow);
+    padding: var(--admin-space-5);
+    margin-bottom: var(--admin-space-5);
+}
+
+.admin-card h2,
+.admin-card h3,
+.admin-card h4,
+.admin-card h5 {
+    margin-top: 0;
+}
+
+.dx-grid-resizable {
+    position: relative;
+}
+
+.dx-grid-resize-handle {
+    position: absolute;
+    z-index: 2;
+    top: 0;
+    right: -3px;
+    width: 6px;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+}
+
+.dx-grid-resizing,
+.dx-grid-resizing * {
+    user-select: none;
+    cursor: col-resize !important;
+}

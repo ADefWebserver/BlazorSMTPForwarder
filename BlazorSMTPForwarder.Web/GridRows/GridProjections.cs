@@ -11,7 +11,9 @@ internal static class GridProjections
         From = m.From,
         RecipientUser = m.RecipientUser,
         Received = m.Received.ToLocalTime().ToString("g"),
-        SizeBytes = (int)Math.Min(m.Size, int.MaxValue)
+        SizeBytes = (int)Math.Min(m.Size, int.MaxValue),
+        IsRead = m.IsRead,
+        HasAttachments = m.HasAttachments
     };
 
     public static ServerLogRow ToRow(this ServerLog l) => new()
