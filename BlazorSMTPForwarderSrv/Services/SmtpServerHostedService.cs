@@ -4,7 +4,11 @@ using Microsoft.Extensions.Options;
 using Zetian.Server;
 using Zetian.Relay.Extensions;
 using Zetian.Relay.Configuration;
-using Zetian.AntiSpam.Extensions;
+using Zetian.AntiSpam.Builders;
+using Zetian.AntiSpam.Checkers;
+using Zetian.AntiSpam.Models;
+using Zetian.Models.EventArgs;
+using Zetian.Protocol;
 using BlazorSMTPForwarder.ServiceDefaults.Models;
 using Azure.Data.Tables;
 using System.Net;
@@ -39,6 +43,9 @@ public class SmtpServerHostedService : IHostedService, IDisposable
     private Task? _executeTask;
     private CancellationTokenSource? _stopCts;
     private DateTimeOffset _lastRestartRequested = DateTimeOffset.MinValue;
+
+    // Total spam score at or above which a message is rejected.
+    private const double SpamRejectThreshold = 50;
 
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -142,42 +149,74 @@ public class SmtpServerHostedService : IHostedService, IDisposable
 
         _smtpServer = builder.Build();
 
-        // Configure Anti-Spam
-        _smtpServer.AddAntiSpam(spamBuilder =>
+        // Configure Anti-Spam.
+        // NOTE: Zetian's AddAntiSpam() extension is intentionally NOT used. It hooks
+        // MessageReceived with an async void handler, so e.Cancel is set only after the
+        // server has already accepted the message (and our handler has forwarded it).
+        // Instead we build the AntiSpamService ourselves and run it synchronously below.
+        var antiSpamBuilder = new AntiSpamBuilder()
+            .WithOptions(options => options.RejectThreshold = SpamRejectThreshold);
+
+        if (settings.EnableSpfCheck)
         {
-            if (settings.EnableSpfCheck)
-            {
-                spamBuilder.EnableSpf();
-                _logger.LogInformation("Anti-spam: SPF check enabled.");
-            }
-            if (settings.EnableDkimCheck)
-            {
-                spamBuilder.EnableDkim();
-                _logger.LogInformation("Anti-spam: DKIM check enabled.");
-            }
-            if (settings.EnableDmarcCheck)
-            {
-                spamBuilder.EnableDmarc();
-                _logger.LogInformation("Anti-spam: DMARC check enabled.");
-            }
+            antiSpamBuilder.EnableSpf();
+            _logger.LogInformation("Anti-spam: SPF check enabled.");
+        }
+        if (settings.EnableDkimCheck)
+        {
+            antiSpamBuilder.EnableDkim();
+            _logger.LogInformation("Anti-spam: DKIM check enabled.");
+        }
+        if (settings.EnableDmarcCheck)
+        {
+            antiSpamBuilder.EnableDmarc();
+            _logger.LogInformation("Anti-spam: DMARC check enabled.");
+        }
 
-            if (settings.EnableSpamFiltering)
-            {
-                var rblDomain = !string.IsNullOrEmpty(settings.SpamhausKey)
-                    ? $"{settings.SpamhausKey}.zen.dq.spamhaus.net"
-                    : "zen.spamhaus.org";
+        if (settings.EnableSpamFiltering)
+        {
+            var rblDomain = !string.IsNullOrEmpty(settings.SpamhausKey)
+                ? $"{settings.SpamhausKey}.zen.dq.spamhaus.net"
+                : "zen.spamhaus.org";
 
-                spamBuilder.EnableRbl(rblDomain);
-                _logger.LogInformation(
-                    "Anti-spam: RBL check enabled with domain {RblDomain}.",
-                    rblDomain);
-            }
-            else
+            // A Spamhaus listing alone must reach the reject threshold (the library
+            // default of 25 per listing never would). Only 127.0.0.x answers are real
+            // listings; 127.255.255.x are Spamhaus error codes (e.g. public resolver
+            // blocked, bad DQS key) and must not be treated as spam.
+            antiSpamBuilder.EnableRbl(
+                new[]
+                {
+                    new RblProvider
+                    {
+                        Name = "Spamhaus ZEN",
+                        Zone = rblDomain,
+                        IsEnabled = true,
+                        ExpectedResponses = ["127.0.0."]
+                    }
+                },
+                scorePerListing: 100);
+
+            _logger.LogInformation(
+                "Anti-spam: RBL check enabled with domain {RblDomain}.",
+                rblDomain);
+
+            if (string.IsNullOrEmpty(settings.SpamhausKey))
             {
-                _logger.LogInformation(
-                    "Anti-spam: Spam filtering (RBL) is disabled.");
+                await _tableLogger.LogErrorAsync(
+                    "Spam filtering is enabled without a Spamhaus DQS key. zen.spamhaus.org "
+                    + "refuses queries from public/cloud DNS resolvers (such as Azure DNS), "
+                    + "so RBL checks will likely never match. Set a Spamhaus DQS key.",
+                    null, nameof(SmtpServerHostedService));
             }
-        });
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Anti-spam: Spam filtering (RBL) is disabled.");
+        }
+
+        var antiSpamService = antiSpamBuilder.Build();
+        var antiSpamEnabled = antiSpamService.GetCheckers().Count > 0;
 
         await _tableLogger.LogInformationAsync(
             $"Anti-spam configured: SPF={settings.EnableSpfCheck}, "
@@ -186,60 +225,35 @@ public class SmtpServerHostedService : IHostedService, IDisposable
             + $"RBL={settings.EnableSpamFiltering}",
             nameof(SmtpServerHostedService));
 
-        // Wire up Message Handler
-        _smtpServer.MessageReceived += async (s, e) => await _messageHandler.HandleMessageAsync(s, e);
-
-        _smtpServer.SessionCompleted += async (s, e) =>
+        // Wire up Message Handler.
+        // Zetian raises MessageReceived synchronously and checks e.Cancel as soon as the
+        // handlers return, so the spam check must complete before this handler returns.
+        _smtpServer.MessageReceived += (s, e) =>
         {
-            var ip = (e.Session.RemoteEndPoint as IPEndPoint)?.Address.ToString()
-                     ?? "Unknown";
-
-            if (e.Session.Properties.ContainsKey("SpamDetected"))
+            if (antiSpamEnabled)
             {
-                // Build a reason string from available session properties
-                var reasons = new List<string>();
-                if (e.Session.Properties.ContainsKey("SpfResult"))
-                    reasons.Add($"SPF={e.Session.Properties["SpfResult"]}");
-                if (e.Session.Properties.ContainsKey("DkimResult"))
-                    reasons.Add($"DKIM={e.Session.Properties["DkimResult"]}");
-                if (e.Session.Properties.ContainsKey("DmarcResult"))
-                    reasons.Add($"DMARC={e.Session.Properties["DmarcResult"]}");
-                if (e.Session.Properties.ContainsKey("RblResult"))
-                    reasons.Add($"RBL={e.Session.Properties["RblResult"]}");
-
-                var reasonStr = reasons.Count > 0
-                    ? string.Join("; ", reasons)
-                    : "Unknown (SpamDetected flag set but no detail properties)";
-
-                _logger.LogWarning(
-                    "Spam detected from {IP}. Reason: {Reason}", ip, reasonStr);
-
-                var spamLog = new SpamLog
+                SpamCheckResult? spamResult = null;
+                try
                 {
-                    PartitionKey = "Spam",
-                    RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks)
-                             .ToString("d19"),
-                    Timestamp = DateTimeOffset.UtcNow,
-                    SessionId = e.Session.Properties.TryGetValue("SessionId", out var sid)
-                                ? sid?.ToString() : null,
-                    IP = ip,
-                    From = e.Session.Properties.TryGetValue("MailFrom", out var from)
-                           ? from?.ToString() : null,
-                    To = e.Session.Properties.TryGetValue("RcptTo", out var to)
-                         ? to?.ToString() : null,
-                    DetectionReason = reasonStr,
-                };
+                    spamResult = antiSpamService
+                        .CheckMessageAsync(e.Message, e.Session, stoppingToken)
+                        .GetAwaiter().GetResult();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Anti-spam check failed. Accepting message.");
+                }
 
-                await _tableLogger.LogSpamAsync(spamLog);
-                await _tableLogger.LogInformationAsync(
-                    $"Spam logged from {ip}: {reasonStr}",
-                    nameof(SmtpServerHostedService));
+                if (spamResult != null && spamResult.IsSpam)
+                {
+                    e.Cancel = true;
+                    e.Response = new SmtpResponse(550, $"5.7.1 Message rejected as spam: {spamResult.Reason}");
+                    _ = LogSpamAsync(e, spamResult);
+                    return;
+                }
             }
-            else
-            {
-                _logger.LogDebug(
-                    "Session completed for {IP} - no spam detected.", ip);
-            }
+
+            _ = _messageHandler.HandleMessageAsync(s, e);
         };
 
         _logger.LogInformation("Starting SMTP Server...");
@@ -266,6 +280,42 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         {
             _smtpServer.Dispose();
             _smtpServer = null;
+        }
+    }
+
+    private async Task LogSpamAsync(MessageEventArgs e, SpamCheckResult result)
+    {
+        try
+        {
+            var ip = (e.Session.RemoteEndPoint as IPEndPoint)?.Address.ToString() ?? "Unknown";
+            var reason = $"Score={result.Score:F0}; {result.Reason}";
+            if (!string.IsNullOrWhiteSpace(result.Details))
+            {
+                reason += $" ({result.Details.Replace("\n", "; ")})";
+            }
+
+            _logger.LogWarning("Spam rejected from {IP}. Reason: {Reason}", ip, reason);
+
+            await _tableLogger.LogSpamAsync(new SpamLog
+            {
+                PartitionKey = "Spam",
+                RowKey = (DateTime.MaxValue.Ticks - DateTime.UtcNow.Ticks).ToString("d19"),
+                Timestamp = DateTimeOffset.UtcNow,
+                SessionId = e.Session.Id,
+                TransactionId = e.Message.Id,
+                IP = ip,
+                From = e.Message.From?.Address,
+                To = string.Join(", ", e.Message.Recipients.Select(r => r.Address)),
+                Subject = e.Message.Subject,
+                DetectionReason = reason,
+            });
+            await _tableLogger.LogInformationAsync(
+                $"Spam rejected from {ip}: {reason}",
+                nameof(SmtpServerHostedService));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to log spam message.");
         }
     }
 
