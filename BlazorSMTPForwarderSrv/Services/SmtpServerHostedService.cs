@@ -157,20 +157,14 @@ public class SmtpServerHostedService : IHostedService, IDisposable
         var antiSpamBuilder = new AntiSpamBuilder()
             .WithOptions(options => options.RejectThreshold = SpamRejectThreshold);
 
-        if (settings.EnableSpfCheck)
+        // SPF/DKIM/DMARC use our own checker; Zetian's built-in ones produce false results.
+        if (settings.EnableSpfCheck || settings.EnableDkimCheck || settings.EnableDmarcCheck)
         {
-            antiSpamBuilder.EnableSpf();
-            _logger.LogInformation("Anti-spam: SPF check enabled.");
-        }
-        if (settings.EnableDkimCheck)
-        {
-            antiSpamBuilder.EnableDkim();
-            _logger.LogInformation("Anti-spam: DKIM check enabled.");
-        }
-        if (settings.EnableDmarcCheck)
-        {
-            antiSpamBuilder.EnableDmarc();
-            _logger.LogInformation("Anti-spam: DMARC check enabled.");
+            antiSpamBuilder.AddChecker(new EmailAuthenticationChecker(
+                settings.EnableSpfCheck, settings.EnableDkimCheck, settings.EnableDmarcCheck));
+            _logger.LogInformation(
+                "Anti-spam: email authentication enabled (SPF={Spf}, DKIM={Dkim}, DMARC={Dmarc}).",
+                settings.EnableSpfCheck, settings.EnableDkimCheck, settings.EnableDmarcCheck);
         }
 
         if (settings.EnableSpamFiltering)
