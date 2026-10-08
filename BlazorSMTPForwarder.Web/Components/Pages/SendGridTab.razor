@@ -4,11 +4,14 @@
             <div class="row g-3">
                 <div class="col-12">
                     <label class="form-label">API Key</label>
-                    <DxPassword @bind-Value="SendGridApiKey" />
+                    @* Plain input instead of DxPassword: DxPassword forces autocomplete="current-password",
+                       which lets the browser autofill a saved login password into this API key field. *@
+                    <input type="password" class="dx-input" autocomplete="new-password" data-lpignore="true" data-1p-ignore
+                           value="@SendGridApiKey" @onchange="@(e => SendGridApiKeyChanged.InvokeAsync(e.Value?.ToString()))" />
                 </div>
                 <div class="col-12">
                     <label class="form-label">From Email</label>
-                    <DxTextBox @bind-Value="SendGridFromEmail" Placeholder="e.g. noreply@yourdomain.com" />
+                    <DxTextBox Value="SendGridFromEmail" ValueChanged="@((string? v) => SendGridFromEmailChanged.InvokeAsync(v))" Placeholder="e.g. noreply@yourdomain.com" />
                     <div class="form-text">Must match a verified Sender Identity in SendGrid.</div>
                 </div>
                 <div class="col-12">

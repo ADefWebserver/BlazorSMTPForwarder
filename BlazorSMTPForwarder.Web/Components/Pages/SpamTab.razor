@@ -7,16 +7,19 @@
             <div class="row g-3">
                 <div class="col-12 col-md-6">
                     <label class="form-label">Spamhaus Key</label>
-                    <DxPassword @bind-Value="SpamhausKey" />
+                    @* Plain input instead of DxPassword: DxPassword forces autocomplete="current-password",
+                       which lets the browser autofill a saved login password into this API key field. *@
+                    <input type="password" class="dx-input" autocomplete="new-password" data-lpignore="true" data-1p-ignore
+                           value="@SpamhausKey" @onchange="@(e => SpamhausKeyChanged.InvokeAsync(e.Value?.ToString()))" />
                     <div class="form-text">Spamhaus DQS Key</div>
                 </div>
 
                 <div class="col-12">
                     <div class="d-flex gap-4 mt-2">
-                        <DxSwitch @bind-Value="EnableSpamFiltering" Label="Enable Spamhaus Filtering" />
-                        <DxSwitch @bind-Value="EnableSpfCheck" Label="Enable SPF Check" />
-                        <DxSwitch @bind-Value="EnableDkimCheck" Label="Enable DKIM Check" />
-                        <DxSwitch @bind-Value="EnableDmarcCheck" Label="Enable DMARC Check" />
+                        <DxSwitch Value="EnableSpamFiltering" ValueChanged="@((bool v) => EnableSpamFilteringChanged.InvokeAsync(v))" Label="Enable Spamhaus Filtering" />
+                        <DxSwitch Value="EnableSpfCheck" ValueChanged="@((bool v) => EnableSpfCheckChanged.InvokeAsync(v))" Label="Enable SPF Check" />
+                        <DxSwitch Value="EnableDkimCheck" ValueChanged="@((bool v) => EnableDkimCheckChanged.InvokeAsync(v))" Label="Enable DKIM Check" />
+                        <DxSwitch Value="EnableDmarcCheck" ValueChanged="@((bool v) => EnableDmarcCheckChanged.InvokeAsync(v))" Label="Enable DMARC Check" />
                     </div>
                 </div>
                 <div class="col-12">
